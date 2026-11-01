@@ -1,0 +1,42 @@
+project:
+  name: "traffic_fl_benchmark"
+  seed: 42
+  device: "cuda"            
+
+dataset:
+  name: "PeMSD4"
+  raw_data_path: "data/raw/pems04.npz"
+  distance_path: "data/raw/distance.csv"
+  processed_dir: "data/processed/"
+  num_nodes: 307
+  features: 1               # Lưu lượng xe
+  time_in: 12               # 12 bước lịch sử, tương đương 60 phút với bước 5 phút
+  time_out: 12              # 12 bước dự báo tương lai
+  train_ratio: 0.7
+  val_ratio: 0.1
+  test_ratio: 0.2
+
+non_iid:
+  scenario: "spatial_skew"  # Các lựa chọn
+  num_clients: 5            # Số lượng Node / Client cục bộ (K = 5)
+  splits_dir: "splits/"
+
+model:
+  name: "STGCN"             # "STGCN", "GRU", "LSTM"
+  hidden_dim: 64
+  num_layers: 2
+  dropout: 0.2
+
+training:
+  mode: "centralized"       # "centralized", "local", "federated"
+  batch_size: 64
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  epochs: 100
+  early_stop_patience: 10
+
+federated:
+  algorithm: "FedAvg"       # "FedAvg" hoặc "FedProx"
+  rounds: 50                # Số round giao tiếp
+  local_epochs: 3           # Số epoch mỗi round
+  mu: 0.01                  # Hệ số phạt Proximal term (dành cho FedProx)

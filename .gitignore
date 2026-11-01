@@ -1,0 +1,47 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments
+.venv/
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Jupyter & Notebook checkpoints
+.ipynb_checkpoints
+
+# Logs & WandB
+logs/*
+!logs/.gitkeep
+wandb/
+runs/
+*.log
+
+# Checkpoints
+checkpoints/*
+!checkpoints/.gitkeep
+*.pt
+*.pth
+*.ckpt
+
+# Datasets (chỉ giữ file rỗng .gitkeep, không track dữ liệu nặng)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Generated splits
+splits/*
+!splits/.gitkeep
