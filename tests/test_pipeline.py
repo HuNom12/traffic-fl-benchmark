@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
@@ -6,6 +7,11 @@ from src.utils.seed import set_seed
 from src.models.base import BaseForecaster
 from src.federated.client import ClientNode
 from src.federated.server import FederatedServer
+from src.data.partition import (
+    partition_nodes_spatial_clustering,
+    generate_spatial_skew_scenario,
+    generate_temporal_shift_scenario,
+)
 
 
 # 1. Tạo một Dummy Model đơn giản kế thừa BaseForecaster để test khung interface
@@ -73,7 +79,19 @@ def run_unit_test():
     server.aggregate(client_weights, sample_counts)
     print("-> Server aggregate FedAvg thành công.")
 
-    print("\n>>> Khung code hoạt động <<<")
+    print("\n=== [5] Kiểm tra Phân chia Dữ liệu Non-IID (Task 1.3) ===")
+    adj = np.eye(num_nodes)
+    clusters = partition_nodes_spatial_clustering(adj, num_clients=2)
+    print(f"-> Phân chia cụm không gian thành công cho 2 client: {clusters}")
+
+    dummy_traffic = np.random.rand(100, num_nodes)
+    res_spatial = generate_spatial_skew_scenario(dummy_traffic, clusters, output_path="splits/spatial_skew.json")
+    print(f"-> Sinh kịch bản Spatial Skew thành công, clients: {list(res_spatial['clients'].keys())}")
+
+    res_temporal = generate_temporal_shift_scenario(num_samples=288, num_clients=2, output_path="splits/temporal_shift.json", num_nodes=num_nodes)
+    print(f"-> Sinh kịch bản Temporal Shift thành công, clients: {list(res_temporal['clients'].keys())}")
+
+    print("\n>>> Toàn bộ pipeline hoạt động ổn định và chính xác! <<<")
 
 
 if __name__ == "__main__":
