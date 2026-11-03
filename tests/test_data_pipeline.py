@@ -17,10 +17,10 @@ def test_dataset_pipeline():
     # 1. Kiểm tra Ma trận kề A
     num_nodes = 20
     adj = compute_adjacency_matrix("data/raw/distance.csv", num_nodes=num_nodes)
-    assert adj.shape == (num_nodes, num_nodes), "Kích thước ma trận kề sai lệch!"
-    assert np.allclose(adj, adj.T), "Ma trận kề không đối xứng!"
-    assert np.allclose(np.diag(adj), 1.0), "Đường chéo chính của A chưa bằng 1.0!"
-    print("-> Ma trận kề A (Shape, Đối xứng, Self-loop) [PASSED]")
+    assert adj.shape == (num_nodes, num_nodes), "Kích thước ma trận kề sai lệch"
+    assert np.allclose(adj, adj.T), "Ma trận kề không đối xứng"
+    assert np.allclose(np.diag(adj), 1.0), "Đường chéo chính của A != 1.0"
+    print("-> [PASSED]")
 
     # 2. Kiểm tra nạp và tiền xử lý PeMS
     data_dict = load_and_preprocess_pems("data/raw/pems04.npz", time_in=12, time_out=12)
@@ -28,17 +28,16 @@ def test_dataset_pipeline():
     vx, vy = data_dict["val_x"], data_dict["val_y"]
 
     # Kiểm tra sliding window
-    assert tx.shape[1] == 12, "Time_in phải đúng 12 bước!"
-    assert ty.shape[1] == 12, "Time_out phải đúng 12 bước!"
-    assert ty.shape[-1] == 1, "Tensor mục tiêu Y chỉ dự báo kênh 0 (Traffic Flow)!"
+    assert tx.shape[1] == 12, "Time_in != 12 steps"
+    assert ty.shape[1] == 12, "Time_out != 12 steps"
+    assert ty.shape[-1] == 1, "Tensor mục tiêu Y chỉ dự báo kênh 0"
     print(f"-> Tensor Train X: {tx.shape}, Train Y: {ty.shape} [PASSED]")
 
     # 3. Kiểm tra PyTorch Dataset
     dataset = StandardTrafficDataset(tx[:32], ty[:32])
     sample_x, sample_y = dataset[0]
     assert sample_x.shape == (12, tx.shape[2], tx.shape[3])
-    print("-> StandardTrafficDataset PyTorch wrapping [PASSED]")
-    print(">>> TASK 1.2 PASS HOÀN TOÀN <<<\n")
+    print("-> [PASSED]")
 
 
 if __name__ == "__main__":
