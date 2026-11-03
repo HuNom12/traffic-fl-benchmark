@@ -2,7 +2,7 @@ import os
 import json
 import numpy as np
 from typing import Dict, List, Any
-
+from sklearn.cluster import SpectralClustering
 
 def partition_nodes_spatial_clustering(
     adj_matrix: np.ndarray,
@@ -17,11 +17,29 @@ def partition_nodes_spatial_clustering(
         Dict: {client_id: [danh_sách_sensor_id]}
     """
     # TODO: Cài đặt thuật toán gom cụm tại đây
-    raise NotImplementedError("Cần hoàn thiện hàm partition_nodes_spatial_clustering")
+    num_nodes = adj_matrix.shape[0]
 
+    # Đảm bảo ma trận kề đối xứng và không có giá trị âm
+    affinity = (adj_matrix + adj_matrix.T) / 2.0
+    affinity = np.clip(affinity, 0.0, 1.0)
+
+    clustering = SpectralClustering(
+        n_clusters=num_clients,
+        affinity="precomputed",
+        random_state=42,
+        assign_labels="kmeans",
+    )
+    labels = clustering.fit_predict(affinity)
+
+    client_clusters: Dict[int, List[int]] = {i: [] for i in range(num_clients)}
+    for node_idx, cluster_id in enumerate(labels):
+        client_clusters[int(cluster_id)].append(int(node_idx))
+
+    return client_clusters
 
 def generate_spatial_skew_scenario(
-    traffic_data: np.ndarray,
+    train_x: np.ndarray,
+    train_y: np.ndarray,
     client_clusters: Dict[int, List[int]],
     output_path: str = "splits/spatial_skew.json"
 ) -> Dict[str, Any]:
@@ -34,11 +52,41 @@ def generate_spatial_skew_scenario(
     - Lưu cấu trúc index cố định ra file JSON.
     """
     # TODO: Cài đặt logic kịch bản Spatial Skew tại đây
-    raise NotImplementedError("Cần hoàn thiện hàm generate_spatial_skew_scenario")
+    num_clients = len(client_clusters)
+    cluster_means = {}
+
+    for c_id, node_list in client_clusters.items():
+        if len(node_list) > 0:
+            # Tính lưu lượng trung bình của cụm node
+            avg_flow = np.mean(train_y[:, :, node_list, 0])
+            cluster_means[c_id] = float(avg_flow)
+        else:
+            cluster_means[c_id] = 0.0
+
+    # Sắp xếp cluster theo lưu lượng tăng dần
+    sorted_clusters = sorted(cluster_means.keys(), key=lambda k: cluster_means[k])
+
+    partition_info: Dict[str, Any] = {
+        "scenario": "spatial_skew",
+        "num_clients": num_clients,
+        "clients": {},
+    }
+
+    total_samples = len(train_x)
+    for client_idx, cluster_key in enumerate(sorted_clusters):
+        partition_info["clients"][str(client_idx)] = {
+            "sensor_nodes": client_clusters[cluster_key],
+            "average_flow": cluster_means[cluster_key],
+            # Toàn bộ dải thời gian nhưng chỉ trên tập sensor cục bộ
+            "sample_indices": list(range(total_samples)),
+        }
+
+    save_split_indices(partition_info, output_path)
+    return partition_info
 
 
 def generate_temporal_shift_scenario(
-    num_samples: int,
+    train_x: np.ndarray,
     num_clients: int = 5,
     output_path: str = "splits/temporal_shift.json"
 ) -> Dict[str, Any]:
@@ -50,7 +98,32 @@ def generate_temporal_shift_scenario(
     - Lưu cấu trúc index cố định ra file JSON.
     """
     # TODO: Cài đặt logic kịch bản Temporal Shift tại đây
-    raise NotImplementedError("Cần hoàn thiện hàm generate_temporal_shift_scenario")
+    total_samples = len(train_x)
+    num_nodes = train_x.shape[2]
+    all_sensors = list(range(num_nodes))
+
+    # Chia chuỗi thời gian thành các khối mẫu liên tiếp lệch pha
+    block_size = total_samples // num_clients
+
+    partition_info: Dict[str, Any] = {
+        "scenario": "temporal_shift",
+        "num_clients": num_clients,
+        "clients": {},
+    }
+
+    for client_idx in range(num_clients):
+        start_idx = client_idx * block_size
+        end_idx = total_samples if client_idx == num_clients - 1 else (client_idx + 1) * block_size
+        indices = list(range(start_idx, end_idx))
+
+        partition_info["clients"][str(client_idx)] = {
+            "sensor_nodes": all_sensors,
+            "sample_indices": indices,
+            "num_samples": len(indices),
+        }
+
+    save_split_indices(partition_info, output_path)
+    return partition_info
 
 
 def save_split_indices(data: Dict[str, Any], filepath: str) -> None:
