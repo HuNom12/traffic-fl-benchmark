@@ -1,4 +1,4 @@
-# Traffic FL Benchmark 🚦📡
+# Traffic FL Benchmark 
 
 Hệ thống Benchmark Federated Learning (Học liên kết) cho bài toán dự báo chuỗi thời gian không-thời gian trên mạng lưới giao thông (Spatio-Temporal Traffic Forecasting trên tập dữ liệu PeMS).
 
@@ -10,15 +10,16 @@ Hệ thống Benchmark Federated Learning (Học liên kết) cho bài toán d�
 traffic-fl-benchmark/
 ├── configs/                  # File cấu hình trung tâm (YAML)
 │   ├── config.yaml           # Cấu hình siêu tham số toàn hệ thống
-│   ├── dataset/              # Cấu hình tập dữ liệu (pems04.yaml)
+│   ├── dataset/              # Cấu hình tập dữ liệu
 │   └── non_iid/              # Cấu hình các kịch bản Non-IID (spatial_skew.yaml, temporal_shift.yaml)
 ├── data/
-│   ├── raw/                  # Dữ liệu gốc (.npz, distance.csv)
+│   ├── raw/
+    |    |-METR-LA/           # Dữ liệu gốc
 │   └── processed/            # Dữ liệu sau khi xử lý & chuẩn hóa
 ├── splits/                   # Chỉ số phân chia dữ liệu Non-IID (.json) và biểu đồ phân phối (.png)
 ├── src/
 │   ├── data/
-│   │   ├── dataset.py        # Tiền xử lý PeMS, Z-score, sliding window, ma trận kề A
+│   │   ├── dataset.py        # Tiền xử lý, Z-score, sliding window, ma trận kề A
 │   │   └── partition.py      # Phân rã đồ thị K-client, sinh kịch bản Spatial Skew & Temporal Shift
 │   ├── models/
 │   │   ├── base.py           # BaseForecaster trừu tượng (chuẩn hóa tensor 4D)
@@ -33,7 +34,6 @@ traffic-fl-benchmark/
 │       └── metrics.py        # Các hàm đánh giá (MAE, RMSE, MAPE)
 └── tests/                    # Bộ kiểm thử đơn vị mô-đun
     ├── test_fl_core.py       # Kiểm thử hạ tầng FL, ClientNode, FedAvg, FedProx
-    ├── test_data_pipeline.py # Kiểm thử tiền xử lý PeMS và ma trận kề A (Task 1.2)
     ├── test_patrition.py     # Kiểm thử kịch bản Non-IID tích hợp với PeMS pipeline
     └── test_partition.py    # Kiểm thử độc lập thuật toán phân rã Non-IID và vẽ biểu đồ
 ```
@@ -95,8 +95,7 @@ $env:PYTHONPATH="."; $env:PYTHONIOENCODING="utf-8"; python tests/test_data_pipel
 PYTHONPATH=. python tests/test_fl_core.py
 
 # 2. Data pipeline test
-PYTHONPATH=. python tests/test_data_pipeline.py
-
+...
 # 3. Non-IID Partition tests
 PYTHONPATH=. python tests/test_patrition.py
 PYTHONPATH=. python tests/test_partition.py
