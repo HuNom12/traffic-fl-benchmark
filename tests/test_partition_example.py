@@ -1,4 +1,9 @@
 import os
+import sys
+
+# Đảm bảo Python nhận diện được package src khi chạy trực tiếp script này
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 import json
 import numpy as np
 import pytest
@@ -138,6 +143,47 @@ def test_temporal_shift_scenario():
     assert os.path.getsize(plot_path) > 1000, "File biểu đồ bị rỗng"
 
 
+def test_alternative_signatures():
+    """Kiểm tra tính tương thích với cú pháp gọi:
+    1. generate_spatial_skew_scenario(tx, ty, clusters)
+    2. generate_temporal_shift_scenario(tx, num_clients=num_clients)
+    """
+    print("\n=== Kiểm tra tính đa hình chữ ký hàm (Alternative Signatures) ===")
+    num_samples = 288
+    time_in = 12
+    time_out = 12
+    num_nodes = 20
+    num_clients = 4
+
+    # Tạo dummy tensor 4D cho tx và ty
+    tx = np.random.randn(num_samples, time_in, num_nodes, 1).astype(np.float32)
+    ty = np.random.randn(num_samples, time_out, num_nodes, 1).astype(np.float32)
+
+    # Cụm giả lập
+    clusters = {c: list(range(c * 5, (c + 1) * 5)) for c in range(num_clients)}
+
+    # 1. Test Spatial Skew với 3 tham số vị trí: (tx, ty, clusters)
+    spatial_path = "splits/spatial_skew_alt.json"
+    spatial_res = generate_spatial_skew_scenario(tx, ty, clusters, output_path=spatial_path)
+    assert os.path.exists(spatial_path), "Không tạo được file spatial_skew_alt.json"
+    assert len(spatial_res["clients"]) == num_clients
+    # Kiểm tra cả 2 alias đều tồn tại
+    c0 = spatial_res["clients"]["0"]
+    assert "sensor_ids" in c0 and "sensor_nodes" in c0
+    assert "mean_flow" in c0 and "average_flow" in c0
+    print("-> Cú pháp 3 tham số (tx, ty, clusters) PASSED")
+
+    # 2. Test Temporal Shift với mảng 4D tx
+    temporal_path = "splits/temporal_shift_alt.json"
+    temporal_res = generate_temporal_shift_scenario(tx, num_clients=num_clients, output_path=temporal_path)
+    assert os.path.exists(temporal_path), "Không tạo được file temporal_shift_alt.json"
+    assert len(temporal_res["clients"]) == num_clients
+    c0_temp = temporal_res["clients"]["0"]
+    assert "sensor_ids" in c0_temp and "sensor_nodes" in c0_temp
+    assert len(c0_temp["sensor_nodes"]) == num_nodes
+    print("-> Cú pháp mảng tensor 4D tx cho Temporal Shift PASSED")
+
+
 if __name__ == "__main__":
     print("=== Chạy kiểm thử cho Task 1.3: Non-IID Partition ===")
     test_partition_nodes_spatial_clustering()
@@ -149,5 +195,7 @@ if __name__ == "__main__":
     test_temporal_shift_scenario()
     print("-> test_temporal_shift_scenario PASSED")
 
-    print("\n>>> TẤT CẢ UNIT TESTS CHO TASK 1.3 ĐÃ HOÀN THÀNH XUẤT SẮC! <<<")
+    test_alternative_signatures()
+    print("-> test_alternative_signatures PASSED")
 
+    print("\n>>> TẤT CẢ UNIT TESTS CHO TASK 1.3 ĐÃ HOÀN THÀNH XUẤT SẮC! <<<")
