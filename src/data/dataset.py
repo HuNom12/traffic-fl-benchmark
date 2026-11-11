@@ -5,8 +5,8 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 from typing import Tuple, Dict, Any
-from src.data.loader import TrafficLoader
-from src.data.transform import TrafficTransformer
+from src.data.ingestion.loader import TrafficLoader
+from src.data.transform.graph_transformer import TrafficTransformer
 
 class StandardTrafficDataset(Dataset):
     """PyTorch Dataset cho dữ liệu giao thông chuỗi thời gian dạng trượt (Sliding Window)."""

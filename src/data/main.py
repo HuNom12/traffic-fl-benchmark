@@ -1,6 +1,6 @@
-from loader import DataLoader
-from transform import TrafficTransformer
-from analyzer import TrafficAnalyzer
+from src.data.ingestion.loader import DataLoader
+from src.data.transform.graph_transformer import TrafficTransformer
+from src.data.ingestion.analyzer import TrafficAnalyzer
 from split import TrafficSplitter
 
 '''Download METR-LA dataset from Hugging Face and save it as raw Parquet files.'''
