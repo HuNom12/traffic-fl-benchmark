@@ -1,169 +1,128 @@
 
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
+from huggingface_hub import snapshot_download
 import pandas as pd
+from datasets import load_dataset, DatasetDict
 
 
-class TrafficLoader:
-    """
-    Load traffic data from CSV, Parquet and TXT files.
-    """
+class DataLoader:
+    """Load and save traffic datasets."""
 
-    SUPPORTED_FORMATS = {".csv", ".parquet", ".txt"}
+    def __init__(self, data_dir: str = "../../data/raw"):
+        self.data_dir = Path(data_dir)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
 
-    def __init__(self, data_dir: Optional[str] = None):
+    def load_metr_la_from_huggingface(self) -> DatasetDict:
         """
-        Args:
-            data_dir: Root directory containing raw datasets.
-        """
-        self.data_dir = Path(data_dir) if data_dir else Path.cwd()  
-
-    def load(
-        self,
-        file_path: Union[str, Path],
-        **kwargs
-    ) -> pd.DataFrame:
-        """
-        Automatically detect file format and load data.
-
-        Args:
-            file_path: Path to input file.
-            **kwargs: Additional arguments for pandas readers.
+        Download METR-LA dataset from Hugging Face.
 
         Returns:
-            pd.DataFrame
+            DatasetDict containing available splits.
+        """
+        print("Downloading METR-LA from Hugging Face...")
+
+        ds = load_dataset("witgaw/METR-LA")
+
+        print("\nDataset downloaded successfully!")
+        print(f"Available splits: {list(ds.keys())}")
+
+        for split_name, split_data in ds.items():
+            print(
+                f"{split_name}: "
+                f"{len(split_data):,} records, "
+                f"{len(split_data.column_names)} columns"
+            )
+
+        return ds
+
+    def save_metr_la_raw(
+        self,
+        ds: DatasetDict,
+        output_dir: Optional[str] = None
+    ) -> None:
+        """
+        Save each available split as a raw Parquet file.
+        """
+        save_dir = (
+            Path(output_dir)
+            if output_dir
+            else self.data_dir / "METR-LA"
+        )
+
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        for split_name, split_data in ds.items():
+            output_path = save_dir / f"{split_name}.parquet"
+
+            split_data.to_parquet(str(output_path))
+
+            print(
+                f"Saved {split_name}: {output_path} "
+                f"({len(split_data):,} records)"
+            )
+
+        print("\nMETR-LA raw data saved successfully!")
+
+    def download_metr_la(self) -> DatasetDict:
+        """
+        Download METR-LA and save all splits into data/raw/METR-LA.
+        """
+        ds = self.load_metr_la_from_huggingface()
+        self.save_metr_la_raw(ds)
+
+        return ds
+    
+    def download_metr_la_graph(self):
+        """
+        Download METR-LA sensor graph metadata.
+        """
+        output_dir = self.data_dir / "METR-LA"
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        snapshot_download(
+            repo_id="witgaw/METR-LA",
+            repo_type="dataset",
+            allow_patterns="sensor_graph/*",
+            local_dir=str(output_dir)
+        )
+
+        print(f"Graph data saved at: {output_dir}")
+
+    def download_all_metr_la(self):
+        """
+        Download complete METR-LA raw dataset:
+        1. Traffic data
+        2. Sensor graph metadata
         """
 
-        path = Path(file_path)
+        print("=" * 60)
+        print("START METR-LA RAW INGESTION")
+        print("=" * 60)
 
-        # Resolve relative paths from data_dir
-        if not path.is_absolute():
-            path = self.data_dir / path
+        # Download traffic splits
+        print("\n[1/2] Downloading traffic data...")
+        self.download_metr_la()
 
-        if not path.exists():
+        # Download graph metadata
+        print("\n[2/2] Downloading sensor graph...")
+        self.download_metr_la_graph()
+
+        print("\n" + "=" * 60)
+        print("METR-LA RAW INGESTION COMPLETED")
+        print("=" * 60)
+
+    def load(self, file_name: str) -> pd.DataFrame:
+        """
+        Load a local Parquet file.
+        """
+        file_path = self.data_dir / file_name
+
+        if not file_path.exists():
             raise FileNotFoundError(
-                f"Dataset not found: {path}"
+                f"Dataset not found: {file_path}"
             )
 
-        extension = path.suffix.lower()
-
-        if extension not in self.SUPPORTED_FORMATS:
-            raise ValueError(
-                f"Unsupported format: {extension}. "
-                f"Supported formats: {self.SUPPORTED_FORMATS}"
-            )
-
-        try:
-            if extension == ".csv":
-                return self._load_csv(path, **kwargs)
-
-            elif extension == ".parquet":
-                return self._load_parquet(path, **kwargs)
-
-            elif extension == ".txt":
-                return self._load_txt(path, **kwargs)
-
-        except Exception as error:
-            raise RuntimeError(
-                f"Failed to load dataset {path}: {error}"
-            ) from error
-
-    @staticmethod
-    def _load_csv(
-        path: Path,
-        **kwargs
-    ) -> pd.DataFrame:
-        """Load CSV file."""
-        return pd.read_csv(path, **kwargs)
-
-    @staticmethod
-    def _load_parquet(
-        path: Path,
-        **kwargs
-    ) -> pd.DataFrame:
-        """Load Parquet file."""
-        return pd.read_parquet(path, **kwargs)
-
-    @staticmethod
-    def _load_txt(
-        path: Path,
-        **kwargs
-    ) -> pd.DataFrame:
-        """
-        Load TXT file.
-
-        Default delimiter is comma.
-        Override with sep='\\t' for tab-separated files.
-        """
-        return pd.read_csv(
-            path,
-            sep=kwargs.pop("sep", ","),
-            **kwargs
-        )
-
-    def load_multiple(
-        self,
-        file_paths: list,
-        **kwargs
-    ) -> dict:
-        """
-        Load multiple datasets.
-
-        Returns:
-            Dictionary: {filename: DataFrame}
-        """
-        datasets = {}
-
-        for file_path in file_paths:
-            path = Path(file_path)
-
-            datasets[path.stem] = self.load(
-                file_path,
-                **kwargs
-            )
-
-        return datasets
-
-    def save(self, output_path, file_format="parquet"):
-        """
-        Save transformed DataFrame.
-
-        Supported formats:
-        - parquet
-        - csv
-        """
-
-        output_path = Path(output_path)
-        output_path.parent.mkdir(
-            parents=True,
-            exist_ok=True
-        )
-
-        if file_format == "parquet":
-            if output_path.suffix != ".parquet":
-                output_path = output_path.with_suffix(".parquet")
-
-            self.df.to_parquet(
-                output_path,
-                index=False
-            )
-
-        elif file_format == "csv":
-            if output_path.suffix != ".csv":
-                output_path = output_path.with_suffix(".csv")
-
-            self.df.to_csv(
-                output_path,
-                index=False
-            )
-
-        else:
-            raise ValueError(
-                "Chỉ hỗ trợ parquet và csv."
-            )
-
-        print(f"Saved transformed data: {output_path}")
-        print(f"Shape: {self.df.shape}")
-
-        return self
+        return pd.read_parquet(file_path)
