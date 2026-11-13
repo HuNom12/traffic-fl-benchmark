@@ -1,0 +1,150 @@
+
+# ==========================================
+# METR-LA Dataset Configuration
+# ==========================================
+
+dataset:
+  name: metr_la
+  description: "METR-LA Spatio-Temporal Traffic Forecasting Dataset"
+
+  # Dataset information
+  num_nodes: 207
+  num_features: 2
+  target_features: 1
+
+  # Sliding window configuration
+  input_steps: 12
+  output_steps: 12
+
+  # Time interval
+  sampling_interval: 5  # minutes
+
+
+# ==========================================
+# DATA PATHS
+# ==========================================
+
+paths:
+  raw_dir: data/raw/METR-LA
+  processed_dir: data/processed/METR-LA
+
+  # Raw traffic data
+  train_file: train.parquet
+  val_file: val.parquet
+  test_file: test.parquet
+
+  # Raw graph data
+  sensor_graph_dir: sensor_graph
+  adjacency_raw: sensor_graph/adj_mx.npy
+  adjacency_mapping: sensor_graph/adj_mx_mapping.json
+  distances: sensor_graph/distances.csv
+  sensor_locations: sensor_graph/sensor_locations.csv
+
+  # Processed data
+  train_x: train/X_train.npy
+  train_y: train/Y_train.npy
+
+  val_x: val/X_val.npy
+  val_y: val/Y_val.npy
+
+  test_x: test/X_test.npy
+  test_y: test/Y_test.npy
+
+  adjacency: graph/adjacency_matrix.npy
+  sensor_ids: graph/sensor_ids.json
+  scaler: scaler.pkl
+
+
+# ==========================================
+# FEATURE CONFIGURATION
+# ==========================================
+
+features:
+  input:
+    - speed
+    - time_of_day
+
+  target:
+    - speed
+
+  normalization:
+    method: z-score
+    fit_on: train
+    normalize_features:
+      - speed
+    keep_unchanged:
+      - time_of_day
+
+
+# ==========================================
+# GRAPH CONFIGURATION
+# ==========================================
+
+graph:
+  num_nodes: 207
+  adjacency_type: gaussian_kernel
+  input_file: adj_mx.npy
+
+  # The raw adjacency matrix already contains
+  # Gaussian-kernel weights.
+  apply_gaussian_kernel: false
+
+  symmetrization:
+    enabled: true
+    method: max
+
+  self_loops:
+    preserve_existing: true
+
+
+# ==========================================
+# DATA LOADER CONFIGURATION
+# ==========================================
+
+dataloader:
+  batch_size: 32
+  num_workers: 0
+  pin_memory: false
+
+  train:
+    shuffle: true
+    drop_last: false
+
+  val:
+    shuffle: false
+    drop_last: false
+
+  test:
+    shuffle: false
+    drop_last: false
+
+
+# ==========================================
+# DATA SPLITS
+# ==========================================
+
+splits:
+  source: predefined
+  train: train
+  validation: val
+  test: test
+
+  shuffle_before_split: false
+
+
+# ==========================================
+# NON-IID PARTITION CONFIGURATION
+# ==========================================
+
+partition:
+  enabled: true
+  num_clients: 5
+
+  scenarios:
+    spatial_skew:
+      enabled: true
+      file: splits/spatial_skew.json
+
+    temporal_shift:
+      enabled: true
+      file: splits/temporal_shift.json

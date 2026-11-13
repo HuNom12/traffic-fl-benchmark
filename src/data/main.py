@@ -1,17 +1,17 @@
 from src.data.ingestion.loader import DataLoader
-from src.data.transform.graph_transformer import TrafficTransformer
-from src.data.ingestion.analyzer import TrafficAnalyzer
-from split import TrafficSplitter
+import pandas as pd
 
-'''Download METR-LA dataset from Hugging Face and save it as raw Parquet files.'''
+'''Download METR-LA dataset from Hugging Face and save it as raw Parquet files.
 loader = DataLoader(
     data_dir="../../data/raw"
-)
+)'''
 
-ds = loader.download_metr_la()
-loader.download_metr_la_graph()
 
-'''train_df = pd.read_parquet("METR-LA/train.parquet")
-val_df = pd.read_parquet("METR-LA/val.parquet")
-test_df = pd.read_parquet("METR-LA/test.parquet")'''
+train_df = pd.read_parquet("../data/raw/METR-LA/train.parquet")
+val_df = pd.read_parquet("data/raw/METR-LA/val.parquet")
+test_df = pd.read_parquet("data/raw/METR-LA/test.parquet")
+
+print(train_df)
+print(val_df)
+print(test_df)
 
