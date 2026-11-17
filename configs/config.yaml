@@ -4,12 +4,12 @@ project:
   device: "cuda"            
 
 dataset:
-  name: "PeMSD4"
-  raw_data_path: "data/raw/pems04.npz"
-  distance_path: "data/raw/distance.csv"
+  name: "METR-LA"
+  raw_data_path: "data/raw/METR-LA/"
+  adj_mx_path: "data/raw/METR-LA/adj_mx.pkl"
   processed_dir: "data/processed/"
-  num_nodes: 307
-  features: 1               # Lưu lượng xe
+  num_nodes: 207
+  features: 2               # Lưu lượng xe
   time_in: 12               # 12 bước lịch sử, tương đương 60 phút với bước 5 phút
   time_out: 12              # 12 bước dự báo tương lai
   train_ratio: 0.7
@@ -18,7 +18,7 @@ dataset:
 
 non_iid:
   scenario: "spatial_skew"  # Các lựa chọn
-  num_clients: 5            # Số lượng Node / Client cục bộ (K = 5)
+  num_clients: 5             
   splits_dir: "splits/"
 
 model:

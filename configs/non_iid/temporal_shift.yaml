@@ -1,0 +1,7 @@
+scenario: "temporal_shift"
+num_clients: 5
+samples_per_day: 288           # PeMS lấy mẫu mỗi 5 phút (24h * 12 = 288 bước)
+shift_mode: "diurnal_phase"    # Phân bổ theo pha chu kỳ ngày (cao điểm, bình thường, ban đêm)
+output_path: "splits/temporal_shift.json"
+plot_path: "splits/temporal_shift_dist.png"
+

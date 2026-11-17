@@ -1,42 +1,42 @@
-from typing import List, Dict
-import copy
 import torch
-from src.models.base import BaseForecaster
-
+import torch.nn as nn
+from typing import List, Dict, Tuple
+import copy
 
 class FederatedServer:
-    """Server trung tâm điều phối và tổng hợp mô hình toàn cục."""
+    """Điều phối trung tâm cho thuật toán Federated Learning (Server)."""
 
-    def __init__(self, global_model: BaseForecaster, device: torch.device):
+    def __init__(self, global_model: nn.Module, device: torch.device):
         self.global_model = global_model.to(device)
         self.device = device
 
-    def get_global_parameters(self) -> Dict[str, torch.Tensor]:
-        """Lấy trọng số toàn cục hiện tại."""
-        return {key: val.clone() for key, val in self.global_model.state_dict().items()}
+    def get_global_weights(self) -> Dict[str, torch.Tensor]:
+        """Lấy trọng số hiện tại của mô hình toàn cục."""
+        return copy.deepcopy(self.global_model.state_dict())
 
-    def aggregate(
-        self,
-        client_parameters: List[Dict[str, torch.Tensor]],
-        sample_counts: List[int],
-    ) -> None:
-        """Tổng hợp trọng số theo thuật toán Federated Averaging.
+    def aggregate(self, client_results: List[Tuple[Dict[str, torch.Tensor], int]]) -> None:
+        """Thực hiện tổng hợp FedAvg dựa trên trọng số số lượng mẫu dữ liệu từ các Client.
 
         Args:
-            client_parameters: Danh sách dict trọng số của các Client gửi lên
-            sample_counts: Số lượng mẫu dữ liệu của từng Client để tính trọng số đóng góp
+            client_results: Danh sách các tuple (client_weights, num_samples)
         """
-        total_samples = sum(sample_counts)
-        aggregated_weights = copy.deepcopy(client_parameters[0])
+        if not client_results:
+            return
 
-        for key in aggregated_weights.keys():
-            aggregated_weights[key] = (
-                client_parameters[0][key].to(self.device) * (sample_counts[0] / total_samples)
-            )
-            for i in range(1, len(client_parameters)):
-                weighted_param = client_parameters[i][key].to(self.device) * (
-                    sample_counts[i] / total_samples
-                )
-                aggregated_weights[key] += weighted_param
+        total_samples = sum(num_samples for _, num_samples in client_results)
+        if total_samples == 0:
+            return
 
-        self.global_model.load_state_dict(aggregated_weights)   
+        # Khởi tạo accumulator cho trọng số mới
+        global_weights = self.global_model.state_dict()
+        for key in global_weights:
+            global_weights[key] = torch.zeros_like(global_weights[key], dtype=torch.float32)
+
+        # Tính tổng trọng số có trọng số (weighted average)
+        for client_weights, num_samples in client_results:
+            weight_factor = num_samples / total_samples
+            for key in global_weights:
+                global_weights[key] += client_weights[key].float() * weight_factor
+
+        # Cập nhật vào mô hình toàn cục
+        self.global_model.load_state_dict(global_weights)

@@ -1,0 +1,7 @@
+scenario: "spatial_skew"
+num_clients: 5
+clustering_method: "spectral"   # "spectral", "louvain", "kmeans"
+skew_attribute: "mean_flow"    # Sắp xếp các cụm cảm biến theo lưu lượng trung bình
+output_path: "splits/spatial_skew.json"
+plot_path: "splits/spatial_skew_dist.png"
+
