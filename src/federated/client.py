@@ -1,68 +1,77 @@
-from typing import Dict
-import copy
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
-from src.models.base import BaseForecaster
-
+import copy
+from typing import Dict, Any
 
 class ClientNode:
-    """Đại diện cho một Client/Node trong hệ thống phân tán."""
+    """Đại diện cho một Client trong hệ thống Federated Learning."""
 
     def __init__(
         self,
         client_id: int,
-        model: BaseForecaster,
+        model: nn.Module,
         train_loader: DataLoader,
-        val_loader: DataLoader,
         device: torch.device,
-        learning_rate: float = 0.001,
-        mu: float = 0.0,
+        epochs: int = 1,
+        lr: float = 0.001,
+        mu: float = 0.0  # Hệ số FedProx (nếu mu = 0 thì tương đương FedAvg)
     ):
         self.client_id = client_id
         self.model = model.to(device)
         self.train_loader = train_loader
-        self.val_loader = val_loader
         self.device = device
-        self.mu = mu  # Tham số proximal term cho FedProx (mu=0 tương đương FedAvg)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
-        self.criterion = torch.nn.MSELoss()
+        self.epochs = epochs
+        self.lr = lr
+        self.mu = mu
 
-    def set_parameters(self, global_parameters: Dict[str, torch.Tensor]) -> None:
-        """Cập nhật trọng số từ Server gửi về."""
-        self.model.load_state_dict(global_parameters)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        self.criterion = nn.MSELoss()
 
-    def get_parameters(self) -> Dict[str, torch.Tensor]:
-        """Lấy trọng số cục bộ để gửi về Server."""
-        return {key: val.cpu().clone() for key, val in self.model.state_dict().items()}
+    def set_weights(self, global_weights: Dict[str, torch.Tensor]) -> None:
+        """Cập nhật trọng số mô hình cục bộ từ trọng số toàn cục của Server."""
+        self.model.load_state_dict(global_weights)
 
-    def train_epoch(self, global_parameters: Dict[str, torch.Tensor] = None) -> float:
-        """Huấn luyện 1 local epoch, hỗ trợ cả FedAvg và FedProx."""
+    def train(self) -> tuple[Dict[str, torch.Tensor], int]:
+        """Thực hiện huấn luyện cục bộ trên dữ liệu của Client.
+
+        Returns:
+            Tuple gồm (trọng số mô hình sau khi train, tổng số mẫu huấn luyện n_k)
+        """
         self.model.train()
-        total_loss = 0.0
+        
+        # Lưu bản sao trọng số toàn cục để tính toán Proximal Term (cho FedProx)
+        global_model_params = None
+        if self.mu > 0:
+            global_model_params = [
+                param.clone().detach() for param in self.model.parameters()
+            ]
 
-        # Lưu lại bản sao trọng số toàn cục nếu chạy FedProx
-        global_weight_dict = None
-        if self.mu > 0.0 and global_parameters is not None:
-            global_weight_dict = {
-                k: v.to(self.device) for k, v in global_parameters.items()
-            }
+        total_samples = 0
 
-        for x, y in self.train_loader:
-            x, y = x.to(self.device), y.to(self.device)
-            self.optimizer.zero_grad()
+        for epoch in range(self.epochs):
+            for batch_x, batch_y in self.train_loader:
+                batch_x = batch_x.to(self.device)
+                batch_y = batch_y.to(self.device)
+                
+                batch_size = batch_x.size(0)
+                total_samples += batch_size
 
-            pred = self.model(x)
-            loss = self.criterion(pred, y)
+                self.optimizer.zero_grad()
+                
+                # Dự báo từ mô hình
+                outputs = self.model(batch_x)
+                loss = self.criterion(outputs, batch_y)
 
-            # Thêm Proximal term nếu dùng FedProx: (mu / 2) * ||w - w_global||^2
-            if self.mu > 0.0 and global_weight_dict is not None:
-                prox_term = 0.0
-                for name, param in self.model.named_parameters():
-                    prox_term += torch.sum((param - global_weight_dict[name]) ** 2)
-                loss += (self.mu / 2.0) * prox_term
+                # Bổ sung Proximal term nếu chạy FedProx
+                if self.mu > 0 and global_model_params is not None:
+                    proximal_term = 0.0
+                    for local_param, global_param in zip(self.model.parameters(), global_model_params):
+                        proximal_term += torch.sum((local_param - global_param) ** 2)
+                    loss += (self.mu / 2.0) * proximal_term
 
-            loss.backward()
-            self.optimizer.step()
-            total_loss += loss.item()
+                loss.backward()
+                self.optimizer.step()
 
-        return total_loss / len(self.train_loader)
+        # Trả về state_dict và số lượng mẫu của client
+        return copy.deepcopy(self.model.state_dict()), total_samples
