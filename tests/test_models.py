@@ -152,18 +152,30 @@ def test_federated_compatibility_with_heterogeneous_subgraphs():
     model_c1 = STGCNForecaster(num_nodes=60, default_adj=adj_c1)
 
     server = FederatedServer(model_server, device=device)
-    client0 = ClientNode(0, model_c0, loader_c0, loader_c0, device=device, mu=0.0)
-    client1 = ClientNode(1, model_c1, loader_c1, loader_c1, device=device, mu=0.01)
+    client0 = ClientNode(
+        client_id=0,
+        model=model_c0,
+        train_loader=loader_c0,
+        device=device,
+        mu=0.0
+    )
+    client1 = ClientNode(
+        client_id=1, 
+        model=model_c1, 
+        train_loader=loader_c1, 
+        device=device, 
+        mu=0.01
+    )
 
-    global_params = server.get_global_parameters()
-    client0.set_parameters(global_params)
-    client1.set_parameters(global_params)
+    global_params = server.get_global_weights()
+    client0.set_weights(global_params)
+    client1.set_weights(global_params)
 
-    loss0 = client0.train_epoch()
-    loss1 = client1.train_epoch(global_parameters=global_params)
+    loss0 = client0.train()
+    loss1 = client1.train()
 
     # Server tổng hợp trọng số từ 2 client có số nút khác nhau
-    server.aggregate([client0.get_parameters(), client1.get_parameters()], [8, 8])
+    server.aggregate([loss0, loss1])
 
     # Đánh giá thử trên toàn bộ 207 nodes
     x_test = torch.randn(4, time_in, 207, in_features)
@@ -171,8 +183,8 @@ def test_federated_compatibility_with_heterogeneous_subgraphs():
         pred_global = server.global_model(x_test, adj=adj_global)
     assert pred_global.shape == (4, time_out, 207, out_features)
     print(
-        f"-> FL Heterogeneous Subgraphs (Client0 N=45 loss={loss0:.4f}, "
-        f"Client1 N=60 loss={loss1:.4f} -> Global N=207) [PASSED]"
+        f"-> FL Heterogeneous Subgraphs (Client0 N=45 loss={loss0}, "
+        f"Client1 N=60 loss={loss1} -> Global N=207) [PASSED]"
     )
 
 
