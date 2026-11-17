@@ -8,3 +8,5 @@ tqdm>=4.66.0
 networkx>=3.1
 matplotlib>=3.8.0
 pyarrow>=10.0.0
+datasets
+huggingface_hub

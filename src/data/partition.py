@@ -1,482 +1,751 @@
-import os
+
+from __future__ import annotations
+
+import argparse
 import json
-from typing import Dict, List, Any, Optional, Tuple, Union
+import logging
+from pathlib import Path
+from typing import Any
+
 import numpy as np
-from scipy import stats
-from sklearn.cluster import SpectralClustering, KMeans
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
 
-def partition_nodes_spatial_clustering(
-    adj_matrix: np.ndarray,
-    num_clients: int = 5,
-    random_state: int = 42
-) -> Dict[int, List[int]]:
-    """Phân chia N cảm biến về K Client/Node dựa trên đồ thị không gian.
+# ============================================================
+# PATHS
+# ============================================================
 
-    Sử dụng Spectral Clustering trên ma trận kề đối xứng. Trong trường hợp
-    ma trận kề thưa hoặc đồ thị suy biến (ví dụ ma trận đơn vị), tự động chuyển sang
-    phân chia phổ thông qua ma trận Laplacian hoặc gom theo phân đoạn để đảm bảo tính ổn định.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-    Args:
-        adj_matrix: Ma trận kề đồ thị kích thước (N, N).
-        num_clients: Số lượng Client cần phân chia (K).
-        random_state: Seed ngẫu nhiên để tái lập kết quả.
+PROCESSED_DIR = PROJECT_ROOT / "data" / "processed" / "METR-LA"
+TRAIN_X_PATH = PROCESSED_DIR / "train" / "X_train.npy"
+ADJACENCY_PATH = PROCESSED_DIR / "graph" / "adjacency_matrix.npy"
 
-    Returns:
-        Dict: {client_id: [danh_sách_sensor_id_đã_sắp_xếp]}
-    """
-    num_nodes = adj_matrix.shape[0]
-    if num_clients > num_nodes:
+SPLITS_DIR = PROJECT_ROOT / "splits"
+
+SPATIAL_OUTPUT_PATH = SPLITS_DIR / "spatial_skew.json"
+TEMPORAL_OUTPUT_PATH = SPLITS_DIR / "temporal_shift.json"
+
+
+# ============================================================
+# LOGGING
+# ============================================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+)
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# UTILS
+# ============================================================
+
+def save_json(data: dict[str, Any], output_path: Path) -> None:
+    """Lưu cấu hình partition thành JSON."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with output_path.open("w", encoding="utf-8") as file:
+        json.dump(data, file, indent=4, ensure_ascii=False)
+
+    logger.info("Saved: %s", output_path)
+
+
+def validate_inputs(
+    X: np.ndarray,
+    adjacency: np.ndarray,
+    num_nodes: int,
+) -> None:
+    """Kiểm tra dữ liệu đầu vào."""
+
+    if X.ndim != 4:
         raise ValueError(
-            f"Số client ({num_clients}) không được lớn hơn số lượng cảm biến ({num_nodes})"
+            f"X phải có 4 chiều (B,T,N,F), nhận được {X.shape}"
         )
 
-    # Đảm bảo ma trận kề đối xứng và không có giá trị âm
-    w = (adj_matrix + adj_matrix.T) / 2.0
-    w = np.clip(w, 0.0, None)
-    np.fill_diagonal(w, 0.0)
-
-    # Kiểm tra xem đồ thị có cạnh nào hay không
-    total_edges = np.sum(w > 0)
-    if total_edges == 0:
-        # Trường hợp ma trận kề rỗng hoặc đơn vị: chia đều theo chỉ số
-        indices = np.arange(num_nodes)
-        split_indices = np.array_split(indices, num_clients)
-        return {k: split_indices[k].tolist() for k in range(num_clients)}
-
-    try:
-        # Thử nghiệm với Spectral Clustering trực tiếp
-        clustering = SpectralClustering(
-            n_clusters=num_clients,
-            affinity="precomputed",
-            assign_labels="kmeans",
-            random_state=random_state,
-            n_init=10
+    if X.shape[2] != num_nodes:
+        raise ValueError(
+            f"X có {X.shape[2]} nodes, yêu cầu {num_nodes}"
         )
-        labels = clustering.fit_predict(w)
-    except Exception:
-        # Fallback an toàn: Tính toán Normalized Laplacian và áp dụng KMeans trên Eigenvectors
-        degrees = np.sum(w, axis=1)
-        d_inv_sqrt = np.power(degrees, -0.5, where=degrees > 0)
-        d_inv_sqrt[degrees == 0] = 0.0
-        d_mat = np.diag(d_inv_sqrt)
-        laplacian_norm = np.eye(num_nodes) - d_mat @ w @ d_mat
 
-        # Tính giá trị riêng và vector riêng
-        evals, evecs = np.linalg.eigh(laplacian_norm)
-        # Lấy num_clients vector riêng ứng với các giá trị riêng nhỏ nhất
-        k_evecs = evecs[:, :num_clients]
+    if adjacency.shape != (num_nodes, num_nodes):
+        raise ValueError(
+            f"Adjacency phải có shape "
+            f"({num_nodes}, {num_nodes}), nhận {adjacency.shape}"
+        )
 
-        # Chuẩn hóa hàng
-        norms = np.linalg.norm(k_evecs, axis=1, keepdims=True)
-        norms[norms == 0] = 1.0
-        normalized_features = k_evecs / norms
+    if not np.isfinite(adjacency).all():
+        raise ValueError("Adjacency chứa NaN hoặc Inf")
 
-        kmeans = KMeans(n_clusters=num_clients, random_state=random_state, n_init=10)
-        labels = kmeans.fit_predict(normalized_features)
-
-    # Gom nhóm theo client_id
-    clusters: Dict[int, List[int]] = {k: [] for k in range(num_clients)}
-    for node_idx, label in enumerate(labels):
-        clusters[int(label)].append(int(node_idx))
-
-    # Đảm bảo không có client nào bị rỗng (xử lý corner-case)
-    empty_clients = [k for k, v in clusters.items() if len(v) == 0]
-    if empty_clients:
-        for empty_k in empty_clients:
-            largest_k = max(clusters.keys(), key=lambda k: len(clusters[k]))
-            borrowed_node = clusters[largest_k].pop()
-            clusters[empty_k].append(borrowed_node)
-
-    return {k: sorted(v) for k, v in clusters.items()}
+    if not np.isfinite(X).all():
+        raise ValueError("X chứa NaN hoặc Inf")
 
 
-def _extract_node_mean_flow(traffic_data: np.ndarray) -> np.ndarray:
-    """Trích xuất lưu lượng trung bình theo từng nút cảm biến.
+# ============================================================
+# K-MEANS IMPLEMENTATION
+# ============================================================
 
-    Hỗ trợ shape 2D (Time, Nodes), 3D (Time, Nodes, Features) và 4D (Samples, Time, Nodes, Features).
+def kmeans(
+    data: np.ndarray,
+    num_clusters: int,
+    seed: int = 42,
+    max_iter: int = 300,
+) -> tuple[np.ndarray, np.ndarray]:
     """
-    if traffic_data.ndim == 4:
-        # traffic_data: (Samples, Time, Nodes, Features) -> lấy kênh flow (f=0)
-        return np.mean(traffic_data[:, :, :, 0], axis=(0, 1))
-    elif traffic_data.ndim == 3:
-        # traffic_data: (Time, Nodes, Features) -> lấy kênh flow (f=0)
-        return np.mean(traffic_data[:, :, 0], axis=0)
-    elif traffic_data.ndim == 2:
-        # traffic_data: (Time, Nodes)
-        return np.mean(traffic_data, axis=0)
-    else:
-        raise ValueError(f"Shape dữ liệu {traffic_data.shape} không được hỗ trợ (chỉ nhận 2D, 3D, 4D)")
+    K-Means đơn giản, không cần scikit-learn.
 
+    Parameters
+    ----------
+    data:
+        Shape (N, D), N samples và D features.
+    num_clusters:
+        Số clusters.
+    seed:
+        Random seed để tái lập kết quả.
 
-def generate_spatial_skew_scenario(
-    *args,
-    traffic_data: Optional[np.ndarray] = None,
-    client_clusters: Optional[Dict[int, List[int]]] = None,
-    output_path: str = "splits/spatial_skew.json",
-    num_samples: Optional[int] = None,
-    **kwargs
-) -> Dict[str, Any]:
-    """Kịch bản Non-IID 1: Spatial Skew / Feature Skew.
-
-    Hỗ trợ linh hoạt 2 cách truyền tham số:
-    1. Cú pháp truyền thống: generate_spatial_skew_scenario(traffic_data, client_clusters, output_path=...)
-    2. Cú pháp pipeline FL:  generate_spatial_skew_scenario(train_x, train_y, client_clusters, output_path=...)
-
-    Sắp xếp và phân bổ các cụm cảm biến sao cho tạo ra sự chênh lệch phân phối lưu lượng rõ rệt:
-    - Client 0 sở hữu cụm cảm biến có lưu lượng trung bình cao nhất (nội đô / trục đường chính).
-    - Client (K - 1) sở hữu cụm cảm biến có lưu lượng thấp nhất (ngoại ô / đường nhánh).
-
-    Args:
-        *args: [traffic_data, client_clusters] HOẶC [train_x, train_y, client_clusters].
-        traffic_data: Mảng lưu lượng giao thông (2D, 3D hoặc 4D).
-        client_clusters: Dict gom cụm {cluster_id: [sensor_ids]}.
-        output_path: Đường dẫn lưu file cấu hình phân chia JSON.
-        num_samples: Tổng số mẫu thời gian (nếu None sẽ suy ra từ chiều đầu tiên của dữ liệu).
-
-    Returns:
-        Dict chứa thông tin cấu hình phân chia chi tiết của từng Client.
+    Returns
+    -------
+    labels:
+        Cluster ID của từng sample.
+    centroids:
+        Tâm của các clusters.
     """
-    # 1. Chuẩn hóa phân giải các dạng tham số truyền vào
-    if len(args) >= 3:
-        # Dạng truyền: (train_x, train_y, client_clusters)
-        train_x = args[0]
-        train_y = args[1]
-        client_clusters = args[2]
-        # Sử dụng train_y (hoặc train_x nếu train_y rỗng) để trích xuất lưu lượng phân phối
-        traffic_data = train_y if (isinstance(train_y, np.ndarray) and train_y.size > 0) else train_x
-        if num_samples is None and hasattr(train_x, "__len__"):
-            num_samples = len(train_x)
-    elif len(args) == 2:
-        # Dạng truyền: (traffic_data, client_clusters)
-        traffic_data = args[0]
-        client_clusters = args[1]
-    elif len(args) == 1:
-        traffic_data = args[0]
 
-    if "output_path" in kwargs:
-        output_path = kwargs["output_path"]
-    if "num_samples" in kwargs and kwargs["num_samples"] is not None:
-        num_samples = kwargs["num_samples"]
-    if "client_clusters" in kwargs and client_clusters is None:
-        client_clusters = kwargs["client_clusters"]
-    if "traffic_data" in kwargs and traffic_data is None:
-        traffic_data = kwargs["traffic_data"]
+    n_samples = data.shape[0]
 
-    if traffic_data is None or client_clusters is None:
-        raise ValueError("Cần cung cấp dữ liệu lưu lượng (traffic_data) và danh sách cụm (client_clusters)")
+    if not 1 <= num_clusters <= n_samples:
+        raise ValueError("num_clusters phải nằm trong [1, n_samples]")
 
-    node_mean_flow = _extract_node_mean_flow(traffic_data)
-    num_nodes = len(node_mean_flow)
-    num_clients = len(client_clusters)
+    rng = np.random.default_rng(seed)
 
-    if num_samples is None:
-        total_samples = traffic_data.shape[0]
-    else:
-        total_samples = int(num_samples)
+    # Khởi tạo centroids bằng K-Means++
+    centroids = np.empty(
+        (num_clusters, data.shape[1]),
+        dtype=np.float64,
+    )
 
-    # 2. Tính toán lưu lượng trung bình của từng cụm
-    cluster_stats = []
-    for cluster_id, sensor_list in client_clusters.items():
-        if len(sensor_list) == 0:
-            cluster_mean = 0.0
+    first_idx = rng.integers(n_samples)
+    centroids[0] = data[first_idx]
+
+    min_distances = np.sum(
+        (data - centroids[0]) ** 2,
+        axis=1,
+    )
+
+    for cluster_id in range(1, num_clusters):
+        total_distance = min_distances.sum()
+
+        if total_distance <= 1e-12:
+            selected_idx = rng.integers(n_samples)
         else:
-            cluster_mean = float(np.mean(node_mean_flow[sensor_list]))
-        cluster_stats.append((cluster_id, cluster_mean, sensor_list))
+            probabilities = min_distances / total_distance
+            selected_idx = rng.choice(
+                n_samples,
+                p=probabilities,
+            )
 
-    # 3. Sắp xếp các cụm theo lưu lượng giảm dần (High-flow -> Low-flow)
-    cluster_stats.sort(key=lambda item: item[1], reverse=True)
+        centroids[cluster_id] = data[selected_idx]
 
-    # 4. Gán lại client_id theo thứ tự chênh lệch và cung cấp đầy đủ alias
-    client_splits: Dict[str, Any] = {}
-    sample_indices = list(range(total_samples))
+        distances = np.sum(
+            (data - centroids[cluster_id]) ** 2,
+            axis=1,
+        )
 
-    for new_client_id, (_, _, sensor_list) in enumerate(cluster_stats):
-        if len(sensor_list) > 0:
-            sensor_flows = node_mean_flow[sensor_list]
-            c_mean = float(np.mean(sensor_flows))
-            c_std = float(np.std(sensor_flows))
-        else:
-            c_mean = 0.0
-            c_std = 0.0
+        min_distances = np.minimum(min_distances, distances)
 
-        sorted_sensors = [int(s) for s in sorted(sensor_list)]
+    labels = np.zeros(n_samples, dtype=np.int64)
 
-        client_splits[str(new_client_id)] = {
-            "client_id": new_client_id,
-            "sensor_ids": sorted_sensors,
-            "sensor_nodes": sorted_sensors,  # Alias tương thích
-            "sample_indices": sample_indices,
-            "num_sensors": len(sensor_list),
-            "num_samples": total_samples,
-            "mean_flow": round(c_mean, 4),
-            "average_flow": round(c_mean, 4),  # Alias tương thích
-            "std_flow": round(c_std, 4)
+    for _ in range(max_iter):
+        distances = np.sum(
+            (data[:, None, :] - centroids[None, :, :]) ** 2,
+            axis=2,
+        )
+
+        new_labels = np.argmin(distances, axis=1)
+
+        new_centroids = centroids.copy()
+
+        for cluster_id in range(num_clusters):
+            members = data[new_labels == cluster_id]
+
+            if len(members) > 0:
+                new_centroids[cluster_id] = members.mean(axis=0)
+            else:
+                # Tránh cluster rỗng
+                new_centroids[cluster_id] = data[
+                    rng.integers(n_samples)
+                ]
+
+        if np.array_equal(labels, new_labels):
+            labels = new_labels
+            centroids = new_centroids
+            break
+
+        labels = new_labels
+        centroids = new_centroids
+
+    return labels, centroids
+
+
+# ============================================================
+# SPATIAL FEATURE EXTRACTION
+# ============================================================
+
+def extract_node_features(X: np.ndarray) -> np.ndarray:
+    """
+    Tạo vector đặc trưng cho từng node từ speed channel.
+
+    X: (B, T, N, F)
+
+    Mỗi node được mô tả bởi:
+    - Mean speed
+    - Std speed
+    - 25th percentile
+    - Median speed
+    - 75th percentile
+    """
+
+    num_nodes = X.shape[2]
+    features = []
+
+    for node_id in range(num_nodes):
+        # Chỉ sử dụng speed channel (feature 0)
+        speed = np.asarray(
+            X[:, :, node_id, 0],
+            dtype=np.float64,
+        ).reshape(-1)
+
+        node_feature = [
+            np.mean(speed),
+            np.std(speed),
+            np.percentile(speed, 25),
+            np.percentile(speed, 50),
+            np.percentile(speed, 75),
+        ]
+
+        features.append(node_feature)
+
+    return np.asarray(features, dtype=np.float64)
+
+
+def extract_graph_embedding(
+    adjacency: np.ndarray,
+    num_components: int,
+) -> np.ndarray:
+    """
+    Trích xuất graph embedding bằng phổ của normalized adjacency.
+
+    A đã là ma trận trọng số Gaussian, không tính Gaussian Kernel lại.
+
+    Sử dụng A_sym = (A + A.T) / 2 để tạo đồ thị vô hướng
+    phục vụ clustering.
+    """
+
+    A = np.maximum(adjacency, adjacency.T).astype(np.float64)
+
+    # Loại bỏ self-loop khi tính graph embedding
+    np.fill_diagonal(A, 0.0)
+
+    degree = A.sum(axis=1)
+    degree = np.maximum(degree, 1e-12)
+
+    D_inv_sqrt = 1.0 / np.sqrt(degree)
+
+    normalized_A = (
+        D_inv_sqrt[:, None]
+        * A
+        * D_inv_sqrt[None, :]
+    )
+
+    # Vì normalized_A đối xứng, dùng eigh
+    eigenvalues, eigenvectors = np.linalg.eigh(normalized_A)
+
+    # Lấy các eigenvectors ứng với eigenvalues lớn nhất
+    selected_indices = np.argsort(eigenvalues)[::-1][
+        :num_components
+    ]
+
+    embedding = eigenvectors[:, selected_indices]
+
+    return embedding
+
+
+def standardize_features(features: np.ndarray) -> np.ndarray:
+    """Z-score từng cột đặc trưng."""
+
+    mean = features.mean(axis=0)
+    std = features.std(axis=0)
+
+    std = np.where(std < 1e-8, 1.0, std)
+
+    return (features - mean) / std
+
+
+# ============================================================
+# SPATIAL SKEW
+# ============================================================
+
+def generate_spatial_skew(
+    X: np.ndarray,
+    adjacency: np.ndarray,
+    num_clients: int = 5,
+    seed: int = 42,
+) -> dict[str, Any]:
+    """
+    Phân cụm 207 nodes thành num_clients clusters.
+
+    Kết hợp:
+    1. Đặc trưng vận tốc của nodes.
+    2. Graph embedding từ adjacency matrix.
+
+    Mỗi client nhận một cluster nodes.
+    """
+
+    num_nodes = X.shape[2]
+
+    if num_clients > num_nodes:
+        raise ValueError("num_clients không thể lớn hơn num_nodes")
+
+    logger.info("Generating spatial skew...")
+    logger.info("Number of nodes: %d", num_nodes)
+    logger.info("Number of clients: %d", num_clients)
+
+    # 1. Traffic features
+    traffic_features = extract_node_features(X)
+
+    # 2. Graph features
+    graph_features = extract_graph_embedding(
+        adjacency,
+        num_components=min(num_clients, num_nodes),
+    )
+
+    # 3. Chuẩn hóa từng nhóm feature
+    traffic_features = standardize_features(traffic_features)
+    graph_features = standardize_features(graph_features)
+
+    # 4. Kết hợp traffic + graph
+    #
+    # Traffic có trọng số lớn hơn để đảm bảo
+    # clusters có đặc trưng vận tốc khác nhau.
+    combined_features = np.concatenate(
+        [
+            traffic_features,
+            0.5 * graph_features,
+        ],
+        axis=1,
+    )
+
+    # 5. Clustering
+    labels, centroids = kmeans(
+        combined_features,
+        num_clusters=num_clients,
+        seed=seed,
+    )
+
+    # 6. Tạo node index cho từng client
+    clients = {}
+
+    for client_id in range(num_clients):
+        node_indices = np.where(labels == client_id)[0]
+
+        clients[f"client_{client_id}"] = {
+            "node_indices": node_indices.tolist(),
+            "num_nodes": int(len(node_indices)),
+            "cluster_id": client_id,
         }
 
-    scenario_result: Dict[str, Any] = {
+    # Kiểm tra mỗi node chỉ thuộc một client
+    all_nodes = [
+        node
+        for client in clients.values()
+        for node in client["node_indices"]
+    ]
+
+    if len(all_nodes) != num_nodes:
+        raise RuntimeError("Số lượng node sau clustering không hợp lệ")
+
+    if len(set(all_nodes)) != num_nodes:
+        raise RuntimeError("Có node bị trùng giữa các clients")
+
+    if set(all_nodes) != set(range(num_nodes)):
+        raise RuntimeError("Có node bị thiếu sau clustering")
+
+    result = {
         "scenario": "spatial_skew",
+        "dataset": "METR-LA",
+        "num_nodes": num_nodes,
         "num_clients": num_clients,
-        "total_sensors": num_nodes,
-        "total_samples": total_samples,
-        "clients": client_splits
+        "seed": seed,
+        "method": {
+            "clustering": "KMeans",
+            "traffic_features": [
+                "speed_mean",
+                "speed_std",
+                "speed_p25",
+                "speed_median",
+                "speed_p75",
+            ],
+            "graph_features": "normalized_adjacency_spectral_embedding",
+            "graph_fusion_weight": 0.5,
+            "adjacency_symmetrization": "maximum(A, A.T)",
+        },
+        "node_order": "same_as_X_train_and_adjacency",
+        "clients": clients,
     }
 
-    save_split_indices(scenario_result, output_path)
-    return scenario_result
+    logger.info("Spatial clustering completed.")
+
+    for client_id, client in clients.items():
+        logger.info(
+            "%s: %d nodes",
+            client_id,
+            client["num_nodes"],
+        )
+
+    return result
 
 
-def generate_temporal_shift_scenario(
-    *args,
-    num_samples: Optional[int] = None,
-    num_clients: int = 5,
-    output_path: str = "splits/temporal_shift.json",
-    num_nodes: Optional[int] = None,
-    samples_per_day: int = 288,
-    **kwargs
-) -> Dict[str, Any]:
-    """Kịch bản Non-IID 2: Temporal Shift / Concept Drift.
+# ============================================================
+# TEMPORAL SHIFT
+# ============================================================
 
-    Hỗ trợ linh hoạt 2 cách truyền tham số:
-    1. Cú pháp số lượng mẫu: generate_temporal_shift_scenario(num_samples: int, num_clients=..., ...)
-    2. Cú pháp mảng dữ liệu:  generate_temporal_shift_scenario(train_x: np.ndarray, num_clients=..., ...)
-
-    Phân chia các mẫu thời gian giữa các Client lệch theo các pha sinh hoạt trong ngày (24 giờ):
-    - Client 0: Khung giờ đêm khuya / rạng sáng (Off-peak).
-    - Client 1: Khung giờ sáng sớm & cao điểm sáng (Morning Rush).
-    - Client 2: Khung giờ hành chính ban ngày (Daytime Normal).
-    - Client 3: Khung giờ chiều & cao điểm chiều (Evening Rush).
-    - Client 4 (nếu K=5): Khung giờ buổi tối (Evening / Late night).
-
-    Toàn bộ các mẫu đều được sử dụng (không rò rỉ, không mất mẫu).
-
-    Args:
-        *args: [num_samples: int] HOẶC [train_x: np.ndarray, num_clients].
-        num_samples: Tổng số mẫu chuỗi thời gian (nếu truyền int).
-        num_clients: Số Client tham gia (K=4 đến 8).
-        output_path: Đường dẫn lưu file cấu hình JSON.
-        num_nodes: Tổng số cảm biến (mỗi client sở hữu toàn bộ sensor nếu num_nodes != None).
-        samples_per_day: Số bước lấy mẫu trong một chu kỳ ngày (mặc định 288 bước cho PeMS 5 phút).
-
-    Returns:
-        Dict cấu hình phân chia kịch bản Temporal Shift.
+def allocate_indices(
+    indices: np.ndarray,
+    weights: list[float],
+    rng: np.random.Generator,
+) -> list[list[int]]:
     """
-    # 1. Chuẩn hóa phân giải tham số
-    if len(args) >= 1:
-        arg0 = args[0]
-        if isinstance(arg0, (int, np.integer)):
-            num_samples = int(arg0)
-        elif isinstance(arg0, np.ndarray):
-            num_samples = len(arg0)
-            if num_nodes is None:
-                if arg0.ndim >= 3:
-                    num_nodes = int(arg0.shape[2])
-                elif arg0.ndim == 2:
-                    num_nodes = int(arg0.shape[1])
-        elif hasattr(arg0, "__len__"):
-            num_samples = len(arg0)
+    Phân bổ một nhóm sample cho clients theo tỷ lệ weights.
 
-    if len(args) >= 2 and isinstance(args[1], (int, np.integer)):
-        num_clients = int(args[1])
-    if len(args) >= 3 and isinstance(args[2], str):
-        output_path = args[2]
+    Mỗi sample chỉ được gán cho đúng một client.
+    """
 
-    if "num_clients" in kwargs:
-        num_clients = kwargs["num_clients"]
-    if "output_path" in kwargs:
-        output_path = kwargs["output_path"]
-    if "num_nodes" in kwargs:
-        num_nodes = kwargs["num_nodes"]
-    if "samples_per_day" in kwargs:
-        samples_per_day = kwargs["samples_per_day"]
-    if "num_samples" in kwargs and kwargs["num_samples"] is not None:
-        num_samples = int(kwargs["num_samples"])
+    num_clients = len(weights)
 
-    if num_samples is None:
-        raise ValueError("Cần cung cấp num_samples hoặc mảng dữ liệu chuỗi thời gian (train_x)")
+    if len(indices) == 0:
+        return [[] for _ in range(num_clients)]
+
+    weights_array = np.asarray(weights, dtype=np.float64)
+    weights_array = weights_array / weights_array.sum()
+
+    shuffled = rng.permutation(indices)
+
+    raw_counts = weights_array * len(shuffled)
+    counts = np.floor(raw_counts).astype(int)
+
+    # Phân bổ phần dư theo phương pháp largest remainder
+    remainder = len(shuffled) - counts.sum()
+
+    fractional_parts = raw_counts - counts
+    order = np.argsort(fractional_parts)[::-1]
+
+    for i in range(remainder):
+        counts[order[i]] += 1
+
+    result = []
+    start = 0
+
+    for count in counts:
+        end = start + count
+        client_indices = shuffled[start:end]
+
+        result.append(
+            np.sort(client_indices).astype(int).tolist()
+        )
+
+        start = end
+
+    return result
+
+
+def generate_temporal_shift(
+    X: np.ndarray,
+    num_clients: int = 5,
+    seed: int = 42,
+    morning_peak: tuple[float, float] = (7.0, 10.0),
+    evening_peak: tuple[float, float] = (16.0, 19.0),
+) -> dict[str, Any]:
+    """
+    Chia các sample theo thời điểm cao điểm và thấp điểm.
+
+    X[..., 1] là time_of_day, được biểu diễn dưới dạng
+    tỷ lệ trong ngày [0, 1].
+
+    Peak:
+        07:00 - 10:00
+        16:00 - 19:00
+
+    Off-peak:
+        Các thời điểm còn lại.
+
+    Các clients có tỷ lệ peak/off-peak khác nhau.
+    """
+
+    num_samples = X.shape[0]
+    num_nodes = X.shape[2]
 
     if num_clients < 2:
-        raise ValueError("Số lượng client cho kịch bản Temporal Shift phải >= 2")
+        raise ValueError("Temporal shift cần ít nhất 2 clients")
 
-    # Xác định các ranh giới bước thời gian trong ngày cho K client
-    step_boundaries = [int(round(k * samples_per_day / num_clients)) for k in range(num_clients + 1)]
+    logger.info("Generating temporal shift...")
+    logger.info("Number of samples: %d", num_samples)
 
-    # Phân loại từng sample_idx vào đúng client dựa trên chu kỳ ngày
-    client_samples: Dict[int, List[int]] = {k: [] for k in range(num_clients)}
-    for sample_idx in range(num_samples):
-        step_in_day = sample_idx % samples_per_day
-        for k in range(num_clients):
-            if step_boundaries[k] <= step_in_day < step_boundaries[k + 1]:
-                client_samples[k].append(sample_idx)
-                break
+    # Lấy time_of_day tại timestep cuối của X.
+    # Các node trong cùng một timestamp thường có cùng time_of_day.
+    time_values = np.asarray(
+        X[:, -1, :, 1],
+        dtype=np.float64,
+    )
 
-    all_sensor_ids = list(range(num_nodes)) if num_nodes is not None else []
+    sample_time = np.median(time_values, axis=1)
 
-    client_splits: Dict[str, Any] = {}
-    for k in range(num_clients):
-        start_step = step_boundaries[k]
-        end_step = step_boundaries[k + 1]
-        start_hour = (start_step * 24) / samples_per_day
-        end_hour = (end_step * 24) / samples_per_day
+    if not np.isfinite(sample_time).all():
+        raise ValueError("time_of_day chứa NaN hoặc Inf")
 
-        client_splits[str(k)] = {
-            "client_id": k,
-            "sensor_ids": all_sensor_ids,
-            "sensor_nodes": all_sensor_ids,  # Alias tương thích
-            "sample_indices": client_samples[k],
-            "num_sensors": len(all_sensor_ids),
-            "num_samples": len(client_samples[k]),
-            "diurnal_step_range": [start_step, end_step],
-            "diurnal_hour_range": [round(start_hour, 2), round(end_hour, 2)]
+    if sample_time.min() < -1e-5 or sample_time.max() > 1.00001:
+        raise ValueError(
+            "time_of_day cần nằm trong [0, 1]. "
+            "Hãy kiểm tra cách mã hóa time_of_day."
+        )
+
+    sample_time = np.clip(sample_time, 0.0, 1.0)
+
+    # Chuyển tỷ lệ trong ngày thành giờ
+    sample_hour = sample_time * 24.0
+
+    def in_hour_range(
+        hours: np.ndarray,
+        time_range: tuple[float, float],
+    ) -> np.ndarray:
+        start, end = time_range
+
+        if start <= end:
+            return (hours >= start) & (hours < end)
+
+        # Hỗ trợ khoảng thời gian qua nửa đêm
+        return (hours >= start) | (hours < end)
+
+    morning_mask = in_hour_range(sample_hour, morning_peak)
+    evening_mask = in_hour_range(sample_hour, evening_peak)
+
+    peak_mask = morning_mask | evening_mask
+    offpeak_mask = ~peak_mask
+
+    peak_indices = np.where(peak_mask)[0]
+    offpeak_indices = np.where(offpeak_mask)[0]
+
+    logger.info("Peak samples: %d", len(peak_indices))
+    logger.info("Off-peak samples: %d", len(offpeak_indices))
+
+    # Client 0 thiên về peak, client cuối thiên về off-peak.
+    #
+    # Ví dụ 5 clients:
+    # Peak:    [0.60, 0.50, 0.30, 0.15, 0.10]
+    # Offpeak: [0.10, 0.15, 0.30, 0.50, 0.60]
+    #
+    # Mỗi nhóm vẫn được phân bổ cho tất cả clients,
+    # nhưng tỷ lệ phân bổ khác nhau.
+    if num_clients == 2:
+        peak_weights = [0.8, 0.2]
+    else:
+        peak_weights = np.linspace(
+            0.6,
+            0.1,
+            num_clients,
+        ).tolist()
+
+    offpeak_weights = peak_weights[::-1]
+
+    rng = np.random.default_rng(seed)
+
+    peak_allocations = allocate_indices(
+        peak_indices,
+        peak_weights,
+        rng,
+    )
+
+    offpeak_allocations = allocate_indices(
+        offpeak_indices,
+        offpeak_weights,
+        rng,
+    )
+
+    clients = {}
+
+    for client_id in range(num_clients):
+        indices = sorted(
+            peak_allocations[client_id]
+            + offpeak_allocations[client_id]
+        )
+
+        client_peak_count = len(peak_allocations[client_id])
+        client_offpeak_count = len(offpeak_allocations[client_id])
+        total = len(indices)
+
+        clients[f"client_{client_id}"] = {
+            "sample_indices": indices,
+            "num_samples": total,
+            "peak_samples": client_peak_count,
+            "offpeak_samples": client_offpeak_count,
+            "peak_ratio": (
+                client_peak_count / total if total > 0 else 0.0
+            ),
         }
 
-    scenario_result: Dict[str, Any] = {
+    # Kiểm tra mọi sample được phân bổ đúng một lần
+    all_indices = [
+        index
+        for client in clients.values()
+        for index in client["sample_indices"]
+    ]
+
+    if len(all_indices) != num_samples:
+        raise RuntimeError(
+            "Số sample sau temporal partition không hợp lệ"
+        )
+
+    if len(set(all_indices)) != num_samples:
+        raise RuntimeError(
+            "Có sample bị trùng giữa các clients"
+        )
+
+    if set(all_indices) != set(range(num_samples)):
+        raise RuntimeError(
+            "Có sample bị thiếu sau temporal partition"
+        )
+
+    result = {
         "scenario": "temporal_shift",
+        "dataset": "METR-LA",
+        "num_samples": num_samples,
+        "num_nodes": num_nodes,
         "num_clients": num_clients,
-        "total_sensors": num_nodes if num_nodes is not None else 0,
-        "total_samples": num_samples,
-        "samples_per_day": samples_per_day,
-        "clients": client_splits
+        "seed": seed,
+        "time_feature": "time_of_day",
+        "time_encoding": "fraction_of_day",
+        "peak_hours": {
+            "morning": list(morning_peak),
+            "evening": list(evening_peak),
+        },
+        "offpeak_definition": "all_remaining_hours",
+        "allocation": {
+            "peak_weights": peak_weights,
+            "offpeak_weights": offpeak_weights,
+            "method": "weighted_random_disjoint_partition",
+        },
+        "clients": clients,
     }
 
-    save_split_indices(scenario_result, output_path)
-    return scenario_result
+    logger.info("Temporal partition completed.")
+
+    for client_id, client in clients.items():
+        logger.info(
+            "%s: samples=%d, peak_ratio=%.4f",
+            client_id,
+            client["num_samples"],
+            client["peak_ratio"],
+        )
+
+    return result
 
 
-def save_split_indices(data: Dict[str, Any], filepath: str) -> None:
-    """Lưu tệp index cấu hình cố định dạng JSON để đảm bảo tính tái lập."""
-    os.makedirs(os.path.dirname(filepath), exist_ok=True)
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
-    print(f"-> Đã lưu cấu hình phân chia tại: {filepath}")
+# ============================================================
+# PIPELINE
+# ============================================================
+
+def generate_partitions(
+    num_clients: int = 5,
+    seed: int = 42,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Tạo và lưu hai kịch bản Non-IID."""
+
+    if not TRAIN_X_PATH.exists():
+        raise FileNotFoundError(
+            f"Không tìm thấy X_train: {TRAIN_X_PATH}"
+        )
+
+    if not ADJACENCY_PATH.exists():
+        raise FileNotFoundError(
+            f"Không tìm thấy adjacency: {ADJACENCY_PATH}"
+        )
+
+    logger.info("Loading METR-LA data...")
+
+    # mmap để tránh nạp toàn bộ X_train vào RAM
+    X_train = np.load(
+        TRAIN_X_PATH,
+        mmap_mode="r",
+    )
+
+    adjacency = np.load(ADJACENCY_PATH)
+
+    validate_inputs(
+        X_train,
+        adjacency,
+        num_nodes=207,
+    )
+
+    logger.info("X_train shape: %s", X_train.shape)
+    logger.info("Adjacency shape: %s", adjacency.shape)
+
+    # Spatial skew
+    spatial_result = generate_spatial_skew(
+        X=X_train,
+        adjacency=adjacency,
+        num_clients=num_clients,
+        seed=seed,
+    )
+
+    # Temporal shift
+    temporal_result = generate_temporal_shift(
+        X=X_train,
+        num_clients=num_clients,
+        seed=seed,
+    )
+
+    # Save to repository root/splits/
+    save_json(
+        spatial_result,
+        SPATIAL_OUTPUT_PATH,
+    )
+
+    save_json(
+        temporal_result,
+        TEMPORAL_OUTPUT_PATH,
+    )
+
+    logger.info("All partition files generated successfully.")
+
+    return spatial_result, temporal_result
 
 
-def compute_distribution_divergence(
-    split_info: Dict[str, Any],
-    traffic_data: np.ndarray
-) -> Dict[str, Any]:
-    """Tính toán ma trận khoảng cách phân phối Wasserstein giữa các cặp Client.
+# ============================================================
+# CLI
+# ============================================================
 
-    Chứng minh định lượng tính chất Non-IID giữa các Client.
-    """
-    node_mean_flow = _extract_node_mean_flow(traffic_data)
-    clients_dict = split_info.get("clients", {})
-    num_clients = len(clients_dict)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Generate Non-IID partitions for METR-LA"
+    )
 
-    # Thu thập dữ liệu phân bố của từng client
-    client_distributions = {}
-    scenario = split_info.get("scenario", "")
+    parser.add_argument(
+        "--num-clients",
+        type=int,
+        default=5,
+        help="Number of federated clients",
+    )
 
-    if scenario == "spatial_skew":
-        for cid_str, info in clients_dict.items():
-            s_ids = info.get("sensor_ids", info.get("sensor_nodes", []))
-            if len(s_ids) > 0:
-                client_distributions[int(cid_str)] = node_mean_flow[s_ids]
-            else:
-                client_distributions[int(cid_str)] = np.array([0.0])
-    else:  # temporal_shift
-        # Lấy giá trị lưu lượng trung bình toàn mạng theo từng sample_idx
-        if traffic_data.ndim in (3, 4):
-            flow_series = np.mean(traffic_data[:, :, 0], axis=1) if traffic_data.ndim == 3 else np.mean(traffic_data[:, :, :, 0], axis=(1, 2))
-        else:
-            flow_series = np.mean(traffic_data, axis=1)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed",
+    )
 
-        for cid_str, info in clients_dict.items():
-            sample_ids = info["sample_indices"]
-            if len(sample_ids) > 0:
-                client_distributions[int(cid_str)] = flow_series[sample_ids]
-            else:
-                client_distributions[int(cid_str)] = np.array([0.0])
+    args = parser.parse_args()
 
-    # Tính Wasserstein distance cho từng cặp (i, j)
-    wasserstein_matrix = np.zeros((num_clients, num_clients))
-    pairwise_distances = []
-
-    for i in range(num_clients):
-        for j in range(i + 1, num_clients):
-            dist = stats.wasserstein_distance(client_distributions[i], client_distributions[j])
-            wasserstein_matrix[i, j] = dist
-            wasserstein_matrix[j, i] = dist
-            pairwise_distances.append({
-                "pair": f"Client_{i} vs Client_{j}",
-                "wasserstein_distance": round(float(dist), 4)
-            })
-
-    return {
-        "scenario": scenario,
-        "pairwise_wasserstein": pairwise_distances,
-        "mean_divergence": round(float(np.mean([p["wasserstein_distance"] for p in pairwise_distances])), 4)
-    }
-
-
-def plot_non_iid_distribution(
-    split_info: Dict[str, Any],
-    traffic_data: np.ndarray,
-    save_path: str = "splits/distribution_check.png"
-) -> None:
-    """Vẽ biểu đồ phân bố lưu lượng hoặc thời gian chứng minh dữ liệu bị lệch phân phối rõ rệt.
-
-    - Với Spatial Skew: Vẽ đồ thị phân phối (KDE/Histogram) của lưu lượng xe qua các sensor của từng client.
-    - Với Temporal Shift: Vẽ biểu đồ tần suất phân bổ mẫu theo các giờ trong ngày (0h - 24h).
-    """
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    scenario = split_info.get("scenario", "spatial_skew")
-    clients_dict = split_info.get("clients", {})
-    num_clients = len(clients_dict)
-
-    plt.figure(figsize=(10, 6))
-
-    if scenario == "spatial_skew":
-        node_mean_flow = _extract_node_mean_flow(traffic_data)
-        colors = plt.cm.viridis(np.linspace(0, 1, num_clients))
-
-        for idx, (cid_str, info) in enumerate(clients_dict.items()):
-            s_ids = info.get("sensor_ids", info.get("sensor_nodes", []))
-            if len(s_ids) > 0:
-                flows = node_mean_flow[s_ids]
-                plt.hist(
-                    flows,
-                    bins=15,
-                    alpha=0.5,
-                    density=True,
-                    label=f"Client {cid_str} (mean={info['mean_flow']:.1f}, N={len(s_ids)})",
-                    color=colors[idx]
-                )
-
-        plt.title("Phân bố lưu lượng giữa các Client (Spatial Skew / Feature Skew)", fontsize=13)
-        plt.xlabel("Lưu lượng trung bình (Mean Traffic Flow)", fontsize=11)
-        plt.ylabel("Mật độ xác suất (Density)", fontsize=11)
-        plt.legend()
-        plt.grid(True, linestyle="--", alpha=0.6)
-
-    elif scenario == "temporal_shift":
-        samples_per_day = split_info.get("samples_per_day", 288)
-        colors = plt.cm.tab10(np.linspace(0, 1, num_clients))
-
-        for idx, (cid_str, info) in enumerate(clients_dict.items()):
-            sample_ids = np.array(info["sample_indices"])
-            if len(sample_ids) > 0:
-                hours = (sample_ids % samples_per_day) * 24.0 / samples_per_day
-                plt.hist(
-                    hours,
-                    bins=24,
-                    range=(0, 24),
-                    alpha=0.6,
-                    label=f"Client {cid_str} ({info['diurnal_hour_range'][0]}h - {info['diurnal_hour_range'][1]}h, M={len(sample_ids)})",
-                    color=colors[idx]
-                )
-
-        plt.title("Phân bổ số lượng mẫu theo 24 giờ trong ngày (Temporal Shift / Concept Drift)", fontsize=13)
-        plt.xlabel("Giờ trong ngày (0h - 24h)", fontsize=11)
-        plt.ylabel("Số lượng mẫu (Sample Count)", fontsize=11)
-        plt.xticks(range(0, 25, 2))
-        plt.legend()
-        plt.grid(True, linestyle="--", alpha=0.6)
-
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=200)
-    plt.close()
-    print(f"-> Đã lưu biểu đồ phân bố tại: {save_path}")
+    generate_partitions(
+        num_clients=args.num_clients,
+        seed=args.seed,
+    )
