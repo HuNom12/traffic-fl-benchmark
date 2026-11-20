@@ -1,73 +1,57 @@
-
+import os
 import numpy as np
+import pytest
+import torch
+from torch.utils.data import DataLoader
 
-from src.data.dataset import load_metr_la
+from src.data.dataset import load_metr_la, StandardTrafficDataset
 
 
-def test_display_train_data():
-    """Load và hiển thị dữ liệu X_train, Y_train."""
+PROCESSED_DIR = os.path.join("data", "processed", "METR-LA")
 
-    data = load_metr_la()
 
-    X_train = data["train_x"]
-    Y_train = data["train_y"]
+@pytest.mark.skipif(
+    not os.path.exists(os.path.join(PROCESSED_DIR, "train", "X_train.npy")),
+    reason="Dữ liệu METR-LA đã xử lý chưa tồn tại."
+)
+def test_dataset_values_and_feature_ranges():
+    """Kiểm tra giá trị hữu hạn và miền giá trị của Speed (d0) và Time-of-Day (d1)."""
+    data = load_metr_la(PROCESSED_DIR)
+    X_train, Y_train = data["train_x"], data["train_y"]
+    X_val, Y_val = data["val_x"], data["val_y"]
+    X_test, Y_test = data["test_x"], data["test_y"]
 
-    print("\n========== TRAIN DATA ==========")
+    # 1. Không chứa NaN hoặc Inf
+    for name, arr in [
+        ("X_train", X_train), ("Y_train", Y_train),
+        ("X_val", X_val), ("Y_val", Y_val),
+        ("X_test", X_test), ("Y_test", Y_test),
+    ]:
+        assert np.isfinite(arr).all(), f"{name} chứa giá trị NaN hoặc Inf"
 
-    # 1. Kiểm tra shape
-    print("\n[SHAPE]")
-    print("X_train:", X_train.shape)
-    print("Y_train:", Y_train.shape)
+    # 2. Kênh 0 (Speed) đã được chuẩn hóa Z-score trên tập Train (mean ~ 0, std ~ 1)
+    speed_train = X_train[..., 0]
+    assert abs(float(speed_train.mean())) < 0.05, f"Mean của speed chuẩn hóa bất thường: {speed_train.mean()}"
+    assert abs(float(speed_train.std()) - 1.0) < 0.05, f"Std của speed chuẩn hóa bất thường: {speed_train.std()}"
 
-    # 2. Kiểm tra dtype
-    print("\n[DTYPE]")
-    print("X_train:", X_train.dtype)
-    print("Y_train:", Y_train.dtype)
-
-    # 3. Hiển thị một sample
-    print("\n[SAMPLE 0]")
-    print("X_train[0]:")
-    print(X_train[0])
-
-    print("\nY_train[0]:")
-    print(Y_train[0])
-
-    # 4. Hiển thị một timestep
-    print("\n[TIMESTEP 0]")
-    print("X_train[0, 0] - 207 nodes, 2 features:")
-    print(X_train[0, 0])
-
-    print("\nY_train[0, 0] - 207 nodes, 1 target:")
-    print(Y_train[0, 0])
-
-    # 5. Thống kê dữ liệu
-    print("\n[STATISTICS]")
-    print(
-        f"X_train - min: {X_train.min():.4f}, "
-        f"max: {X_train.max():.4f}, "
-        f"mean: {X_train.mean():.4f}, "
-        f"std: {X_train.std():.4f}"
+    # 3. Kênh 1 (Time-of-Day) phải nằm trong đoạn [0.0, 1.0]
+    tod_train = X_train[..., 1]
+    assert tod_train.min() >= -1e-5 and tod_train.max() <= 1.00001, (
+        f"Time-of-day nằm ngoài [0, 1]: min={tod_train.min()}, max={tod_train.max()}"
     )
 
-    print(
-        f"Y_train - min: {Y_train.min():.4f}, "
-        f"max: {Y_train.max():.4f}, "
-        f"mean: {Y_train.mean():.4f}, "
-        f"std: {Y_train.std():.4f}"
-    )
 
-    # 6. Kiểm tra dữ liệu
-    assert X_train.ndim == 4
-    assert Y_train.ndim == 4
+@pytest.mark.parametrize("batch_size", [16, 32])
+def test_dataloader_batching_with_subgraphs(batch_size: int):
+    """Kiểm tra StandardTrafficDataset và DataLoader với cả đồ thị toàn cục (207) và đồ thị con (10)."""
+    X_mock = np.random.randn(64, 12, 207, 2).astype(np.float32)
+    Y_mock = np.random.randn(64, 12, 207, 1).astype(np.float32)
 
-    assert X_train.shape[1:] == (12, 207, 2)
-    assert Y_train.shape[1:] == (12, 207, 1)
+    dataset = StandardTrafficDataset(X_mock, Y_mock)
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-    assert np.isfinite(X_train).all()
-    assert np.isfinite(Y_train).all()
-
-    print("\nDataset test passed!")
-
-
-if __name__ == "__main__":
-    test_display_train_data()
+    bx, by = next(iter(loader))
+    assert bx.shape == (batch_size, 12, 207, 2)
+    assert by.shape == (batch_size, 12, 207, 1)
+    assert bx.dtype == torch.float32
+    assert by.dtype == torch.float32
