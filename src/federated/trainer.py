@@ -19,6 +19,15 @@ class FederatedTrainer:
         self.device = device
         self.config = config
 
+    def _create_client_model(self, client_id: Optional[int] = None) -> nn.Module:
+        """Khởi tạo mô hình cho client, hỗ trợ cả model_builder có tham số client_id và 0 tham số."""
+        if client_id is None:
+            return self.model_builder()
+        try:
+            return self.model_builder(client_id)
+        except TypeError:
+            return self.model_builder()
+
     def train_centralized(self, train_loader: DataLoader, val_loader: DataLoader) -> nn.Module:
         """Huấn luyện tập trung (Centralized Learning - Upper-bound Benchmark)."""
         model = self.model_builder().to(self.device)
@@ -61,7 +70,7 @@ class FederatedTrainer:
             print(f"Đang huấn luyện Client độc lập [{i+1}/{len(client_loaders)}]...")
             
             # Khởi tạo mô hình riêng cho client này
-            client_model = self.model_builder().to(self.device)
+            client_model = self._create_client_model(i).to(self.device)
             optimizer = torch.optim.Adam(client_model.parameters(), lr=lr)
             criterion = nn.MSELoss()
             
@@ -105,7 +114,7 @@ class FederatedTrainer:
         clients = [
             ClientNode(
                 client_id=i,
-                model=self.model_builder(),
+                model=self._create_client_model(i),
                 train_loader=loader,
                 device=self.device,
                 epochs=local_epochs,
