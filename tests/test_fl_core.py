@@ -1,60 +1,110 @@
-import os
-import sys
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
+import copy
 import torch
-import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
+from src.models.temporal import GRUForecaster
 from src.federated.client import ClientNode
 from src.federated.server import FederatedServer
-from src.models.base import BaseForecaster
-from src.utils.seed import set_seed
 
 
-class DummyForecaster(BaseForecaster):
-    def __init__(self, num_nodes: int, in_features: int, time_in: int, time_out: int):
-        super().__init__(num_nodes, in_features, time_in, time_out)
-        self.fc = nn.Linear(time_in * in_features, time_out * in_features)
-
-    def forward(self, x: torch.Tensor, adj: torch.Tensor = None) -> torch.Tensor:
-        b, t, n, f = x.shape
-        x_flat = x.permute(0, 2, 1, 3).reshape(b, n, t * f)
-        out = self.fc(x_flat)
-        return out.reshape(b, n, self.time_out, self.in_features).permute(0, 2, 1, 3)
+def _create_dummy_loader(num_samples: int = 16, batch_size: int = 8, num_nodes: int = 10) -> DataLoader:
+    """Tạo DataLoader giả lập đúng chuẩn 4D của METR-LA: X=(B, 12, N, 2), Y=(B, 12, N, 1)."""
+    x = torch.randn(num_samples, 12, num_nodes, 2)
+    y = torch.randn(num_samples, 12, num_nodes, 1)
+    return DataLoader(TensorDataset(x, y), batch_size=batch_size, shuffle=True)
 
 
-def test_core_fl_pipeline():
-    print("Core FL Interfaces and Reproducibility")
-    set_seed(42)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device: {device}")
+def test_client_node_train_and_fedprox():
+    """Kiểm tra ClientNode.train() cho cả FedAvg (mu=0.0) và FedProx (mu>0.0)."""
+    device = torch.device("cpu")
+    num_nodes = 10
+    loader = _create_dummy_loader(num_samples=16, batch_size=8, num_nodes=num_nodes)
 
-    # Kiểm tra tensor shape từ BaseForecaster
-    model = DummyForecaster(num_nodes=10, in_features=1, time_in=12, time_out=12).to(device)
-    dummy_x = torch.randn(8, 12, 10, 1).to(device)
-    dummy_y = torch.randn(8, 12, 10, 1).to(device)
-    pred = model(dummy_x)
-    assert pred.shape == dummy_y.shape, f"Lỗi shape: {pred.shape} vs {dummy_y.shape}"
-    print("[PASSED]")
+    model = GRUForecaster(num_nodes=num_nodes, in_features=2, hidden_dim=16, num_layers=1)
+    initial_weights = copy.deepcopy(model.state_dict())
 
-    # Kiểm tra ClientNode (FedAvg vs FedProx)
-    loader = DataLoader(TensorDataset(dummy_x, dummy_y), batch_size=4)
-    client1 = ClientNode(0, model, loader, loader, device, mu=0.0)
-    loss1 = client1.train_epoch()
-    assert loss1 > 0, "Loss FedAvg không hợp lệ"
+    # 1. Test FedAvg (mu = 0.0)
+    client_avg = ClientNode(
+        client_id=0,
+        model=model,
+        train_loader=loader,
+        device=device,
+        epochs=1,
+        lr=1e-3,
+        mu=0.0,
+    )
+    weights_avg, n_samples = client_avg.train()
 
-    client2 = ClientNode(1, model, loader, loader, device, mu=0.01)
-    loss2 = client2.train_epoch(global_parameters=client1.get_parameters())
-    assert loss2 > 0, "Loss FedProx không hợp lệ"
-    print(f"-> ClientNode (FedAvg loss: {loss1:.4f}, FedProx loss: {loss2:.4f}) [PASSED]")
+    assert n_samples == 16
+    assert isinstance(weights_avg, dict)
+    assert any(not torch.equal(initial_weights[k], weights_avg[k]) for k in initial_weights)
 
-    # Kiểm tra Server Aggregator
-    server = FederatedServer(model, device)
-    server.aggregate([client1.get_parameters(), client2.get_parameters()], [4, 4])
-    print("-> Server Aggregation [PASSED]")
+    # 2. Test FedProx (mu = 0.01)
+    client_prox = ClientNode(
+        client_id=1,
+        model=copy.deepcopy(model),
+        train_loader=loader,
+        device=device,
+        epochs=1,
+        lr=1e-3,
+        mu=0.01,
+    )
+    client_prox.set_weights(initial_weights)
+    weights_prox, n_samples_prox = client_prox.train()
+
+    assert n_samples_prox == 16
+    assert isinstance(weights_prox, dict)
 
 
-if __name__ == "__main__":
-    test_core_fl_pipeline()
+def test_federated_server_aggregation_and_sync():
+    """Kiểm tra FederatedServer.aggregate() với list các tuple (weights, n_samples) và đồng bộ xuống Client."""
+    device = torch.device("cpu")
+    num_nodes = 10
+
+    global_model = GRUForecaster(num_nodes=num_nodes, in_features=2, hidden_dim=16, num_layers=1)
+    server = FederatedServer(global_model=global_model, device=device)
+
+    loader1 = _create_dummy_loader(num_samples=16, batch_size=8, num_nodes=num_nodes)
+    loader2 = _create_dummy_loader(num_samples=32, batch_size=8, num_nodes=num_nodes)
+
+    client1 = ClientNode(
+        client_id=0,
+        model=copy.deepcopy(global_model),
+        train_loader=loader1,
+        device=device,
+        epochs=1,
+        lr=1e-3,
+        mu=0.0,
+    )
+    client2 = ClientNode(
+        client_id=1,
+        model=copy.deepcopy(global_model),
+        train_loader=loader2,
+        device=device,
+        epochs=1,
+        lr=1e-3,
+        mu=0.0,
+    )
+
+    # Đồng bộ trọng số từ Server xuống Client trước vòng giao tiếp
+    global_weights = server.get_global_weights()
+    client1.set_weights(global_weights)
+    client2.set_weights(global_weights)
+
+    # Huấn luyện cục bộ tại từng Client
+    weights1, n_samples1 = client1.train()
+    weights2, n_samples2 = client2.train()
+
+    # Tổng hợp tại Server theo đúng chữ ký List[Tuple[Dict, int]]
+    server.aggregate([(weights1, n_samples1), (weights2, n_samples2)])
+    updated_global_weights = server.get_global_weights()
+
+    # Kiểm tra công thức trung bình có trọng số (16/48 và 32/48)
+    for key in updated_global_weights:
+        expected = (weights1[key] * 16 + weights2[key] * 32) / 48.0
+        assert torch.allclose(updated_global_weights[key], expected, atol=1e-5)
+
+    # Cập nhật ngược lại cho Client1 và kiểm tra khớp hoàn toàn
+    client1.set_weights(updated_global_weights)
+    for key, val in client1.model.state_dict().items():
+        assert torch.equal(val, updated_global_weights[key])

@@ -1,201 +1,99 @@
-import os
-import sys
-
-# Đảm bảo Python nhận diện được package src khi chạy trực tiếp script này
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 import json
 import numpy as np
 import pytest
-from src.utils.seed import set_seed
+
+from src.data import partition
 from src.data.partition import (
-    partition_nodes_spatial_clustering,
-    generate_spatial_skew_scenario,
-    generate_temporal_shift_scenario,
-    compute_distribution_divergence,
-    plot_non_iid_distribution
+    generate_spatial_skew,
+    generate_temporal_shift,
+    generate_partitions,
 )
 
 
-def test_partition_nodes_spatial_clustering():
-    set_seed(42)
-    num_nodes = 50
+def _create_mock_traffic_data(num_samples: int = 120, num_nodes: int = 50, seed: int = 42):
+    """Tạo tensor 4D giả lập chuẩn METR-LA (B, 12, N, 2) và ma trận kề (N, N)."""
+    rng = np.random.default_rng(seed)
+
+    # Feature 0: tốc độ chuẩn hóa; Feature 1: time-of-day nằm trong [0, 1]
+    speed = rng.normal(loc=0.0, scale=1.0, size=(num_samples, 12, num_nodes, 1)).astype(np.float32)
+    tod = np.linspace(0.0, 1.0, num_samples, endpoint=False, dtype=np.float32)
+    tod_grid = np.broadcast_to(tod[:, None, None, None], (num_samples, 12, num_nodes, 1)).copy()
+    X = np.concatenate([speed, tod_grid], axis=-1)
+
+    # Ma trận kề đối xứng ngẫu nhiên có đường chéo bằng 1
+    raw_adj = rng.uniform(0.0, 1.0, size=(num_nodes, num_nodes)).astype(np.float32)
+    adj = (raw_adj + raw_adj.T) / 2.0
+    np.fill_diagonal(adj, 1.0)
+    return X, adj
+
+
+def test_spatial_skew_partition_example():
+    """Kiểm tra phân cụm không gian (Spatial Skew) chia đủ N nodes cho K clients không trùng lặp."""
+    X, adj = _create_mock_traffic_data(num_samples=120, num_nodes=50, seed=42)
     num_clients = 5
 
-    # Tạo ma trận kề có cấu trúc 5 khối liên thông dày đặc (5 cụm rõ rệt)
-    adj = np.zeros((num_nodes, num_nodes))
-    nodes_per_cluster = num_nodes // num_clients
-    for c in range(num_clients):
-        start = c * nodes_per_cluster
-        end = (c + 1) * nodes_per_cluster
-        # Trong cụm có kết nối mạnh
-        adj[start:end, start:end] = 1.0
+    result = generate_spatial_skew(X=X, adjacency=adj, num_clients=num_clients, seed=42)
 
-    # Chạy gom cụm
-    clusters = partition_nodes_spatial_clustering(adj, num_clients=num_clients, random_state=42)
-
-    assert len(clusters) == num_clients, "Số lượng cụm trả về không khớp num_clients"
-
-    all_nodes = []
-    for cid, s_ids in clusters.items():
-        assert len(s_ids) > 0, f"Client {cid} không được rỗng"
-        all_nodes.extend(s_ids)
-
-    # Đảm bảo phân hoạch bao phủ toàn bộ và không trùng lặp
-    assert sorted(all_nodes) == list(range(num_nodes)), "Các sensor phân bổ không khớp tập {0..N-1}"
-
-
-def test_spatial_skew_scenario():
-    set_seed(42)
-    num_nodes = 50
-    num_clients = 5
-    num_samples = 1000
-
-    # Giả lập dữ liệu traffic (Time, Nodes) với sự phân hóa lưu lượng rõ rệt
-    # Sensor 0..9: lưu lượng cao (80-100)
-    # Sensor 10..19: lưu lượng khá (60-80)
-    # Sensor 20..29: lưu lượng trung bình (40-60)
-    # Sensor 30..39: lưu lượng thấp (20-40)
-    # Sensor 40..49: lưu lượng rất thấp (5-20)
-    traffic_data = np.zeros((num_samples, num_nodes))
-    for c in range(num_clients):
-        base_flow = 80 - c * 18
-        start = c * 10
-        end = (c + 1) * 10
-        traffic_data[:, start:end] = np.random.normal(loc=base_flow, scale=4.0, size=(num_samples, 10))
-
-    # Giả lập gom cụm ban đầu
-    initial_clusters = {c: list(range(c * 10, (c + 1) * 10)) for c in range(num_clients)}
-
-    out_json = "splits/spatial_skew.json"
-    result = generate_spatial_skew_scenario(
-        traffic_data=traffic_data,
-        client_clusters=initial_clusters,
-        output_path=out_json,
-        num_samples=num_samples
-    )
-
-    assert os.path.exists(out_json), f"Không tìm thấy file {out_json}"
     assert result["scenario"] == "spatial_skew"
     assert result["num_clients"] == num_clients
-    assert result["total_sensors"] == num_nodes
-    assert result["total_samples"] == num_samples
+    clients = result["clients"]
+    assert len(clients) == num_clients
 
-    # Kiểm tra tính chất Skew: Client 0 phải có lưu lượng cao nhất, giảm dần về Client 4
-    means = [result["clients"][str(k)]["mean_flow"] for k in range(num_clients)]
-    for i in range(len(means) - 1):
-        assert means[i] >= means[i + 1], f"Thứ tự lưu lượng không giảm dần: {means}"
+    all_assigned_nodes = []
+    for client_key, client_data in clients.items():
+        node_indices = client_data["node_indices"]
+        assert len(node_indices) == client_data["num_nodes"]
+        assert len(node_indices) > 0, f"{client_key} không được gán node nào"
+        all_assigned_nodes.extend(node_indices)
 
-    # Kiểm tra đo lường khoảng cách phân phối Wasserstein
-    divergence_info = compute_distribution_divergence(result, traffic_data)
-    assert divergence_info["mean_divergence"] > 0.0, "Độ lệch phân phối phải > 0"
-    print(f"-> Spatial Skew Mean Wasserstein Divergence: {divergence_info['mean_divergence']}")
-
-    # Kiểm tra xuất biểu đồ phân bố
-    plot_path = "splits/spatial_skew_dist.png"
-    plot_non_iid_distribution(result, traffic_data, save_path=plot_path)
-    assert os.path.exists(plot_path), f"Không tìm thấy file biểu đồ {plot_path}"
-    assert os.path.getsize(plot_path) > 1000, "File biểu đồ bị rỗng"
+    assert sorted(all_assigned_nodes) == list(range(50))
 
 
-def test_temporal_shift_scenario():
-    set_seed(42)
-    num_samples = 2880  # 10 ngày (288 bước/ngày)
+def test_temporal_shift_partition_example():
+    """Kiểm tra phân chia lệch pha thời gian (Temporal Shift) chia đủ B mẫu cho K clients."""
+    X, _ = _create_mock_traffic_data(num_samples=120, num_nodes=50, seed=42)
     num_clients = 5
-    num_nodes = 307
-    out_json = "splits/temporal_shift.json"
 
-    result = generate_temporal_shift_scenario(
-        num_samples=num_samples,
-        num_clients=num_clients,
-        output_path=out_json,
-        num_nodes=num_nodes,
-        samples_per_day=288
-    )
+    result = generate_temporal_shift(X=X, num_clients=num_clients, seed=42)
 
-    assert os.path.exists(out_json), f"Không tìm thấy file {out_json}"
     assert result["scenario"] == "temporal_shift"
     assert result["num_clients"] == num_clients
+    clients = result["clients"]
+    assert len(clients) == num_clients
 
-    # Kiểm tra tổng số mẫu của tất cả client phải bằng đúng num_samples (không rò rỉ, không mất mẫu)
-    total_assigned_samples = sum(len(c["sample_indices"]) for c in result["clients"].values())
-    assert total_assigned_samples == num_samples, f"Tổng số mẫu phân bổ ({total_assigned_samples}) != {num_samples}"
+    all_assigned_samples = []
+    for client_key, client_data in clients.items():
+        sample_indices = client_data["sample_indices"]
+        assert len(sample_indices) == client_data["num_samples"]
+        assert len(sample_indices) > 0, f"{client_key} không có mẫu thời gian nào"
+        all_assigned_samples.extend(sample_indices)
 
-    # Kiểm tra không có mẫu nào bị trùng lặp giữa các client
-    all_sample_indices = []
-    for c in result["clients"].values():
-        all_sample_indices.extend(c["sample_indices"])
-    assert len(set(all_sample_indices)) == num_samples, "Có mẫu bị gán trùng lặp giữa các client"
-
-    # Giả lập chuỗi thời gian traffic với biến thiên theo ngày (sáng/chiều cao điểm, đêm thấp điểm)
-    t = np.arange(num_samples)
-    day_cycle = np.sin(2 * np.pi * (t % 288) / 288 - np.pi / 2)  # Đỉnh vào giữa ngày, đáy vào ban đêm
-    traffic_dummy = np.tile((day_cycle * 30 + 50)[:, None], (1, num_nodes))
-
-    divergence_info = compute_distribution_divergence(result, traffic_dummy)
-    assert divergence_info["mean_divergence"] > 0.0, "Độ lệch Temporal Shift phải > 0"
-    print(f"-> Temporal Shift Mean Wasserstein Divergence: {divergence_info['mean_divergence']}")
-
-    # Kiểm tra xuất biểu đồ phân bố
-    plot_path = "splits/temporal_shift_dist.png"
-    plot_non_iid_distribution(result, traffic_dummy, save_path=plot_path)
-    assert os.path.exists(plot_path), f"Không tìm thấy file biểu đồ {plot_path}"
-    assert os.path.getsize(plot_path) > 1000, "File biểu đồ bị rỗng"
+    assert sorted(all_assigned_samples) == list(range(120))
 
 
-def test_alternative_signatures():
-    """Kiểm tra tính tương thích với cú pháp gọi:
-    1. generate_spatial_skew_scenario(tx, ty, clusters)
-    2. generate_temporal_shift_scenario(tx, num_clients=num_clients)
-    """
-    print("\n=== Kiểm tra tính đa hình chữ ký hàm (Alternative Signatures) ===")
-    num_samples = 288
-    time_in = 12
-    time_out = 12
-    num_nodes = 20
-    num_clients = 4
+def test_generate_partitions_end_to_end(tmp_path, monkeypatch):
+    """Kiểm tra generate_partitions xuất đúng 2 tệp JSON vào thư mục tạm với N=207."""
+    X, adj = _create_mock_traffic_data(num_samples=120, num_nodes=207, seed=42)
 
-    # Tạo dummy tensor 4D cho tx và ty
-    tx = np.random.randn(num_samples, time_in, num_nodes, 1).astype(np.float32)
-    ty = np.random.randn(num_samples, time_out, num_nodes, 1).astype(np.float32)
+    mock_x_path = tmp_path / "X_train.npy"
+    mock_adj_path = tmp_path / "adjacency_matrix.npy"
+    np.save(mock_x_path, X)
+    np.save(mock_adj_path, adj)
 
-    # Cụm giả lập
-    clusters = {c: list(range(c * 5, (c + 1) * 5)) for c in range(num_clients)}
+    spatial_out = tmp_path / "splits" / "spatial_skew.json"
+    temporal_out = tmp_path / "splits" / "temporal_shift.json"
 
-    # 1. Test Spatial Skew với 3 tham số vị trí: (tx, ty, clusters)
-    spatial_path = "splits/spatial_skew_alt.json"
-    spatial_res = generate_spatial_skew_scenario(tx, ty, clusters, output_path=spatial_path)
-    assert os.path.exists(spatial_path), "Không tạo được file spatial_skew_alt.json"
-    assert len(spatial_res["clients"]) == num_clients
-    # Kiểm tra cả 2 alias đều tồn tại
-    c0 = spatial_res["clients"]["0"]
-    assert "sensor_ids" in c0 and "sensor_nodes" in c0
-    assert "mean_flow" in c0 and "average_flow" in c0
-    print("-> Cú pháp 3 tham số (tx, ty, clusters) PASSED")
+    monkeypatch.setattr(partition, "TRAIN_X_PATH", mock_x_path)
+    monkeypatch.setattr(partition, "ADJACENCY_PATH", mock_adj_path)
+    monkeypatch.setattr(partition, "SPATIAL_OUTPUT_PATH", spatial_out)
+    monkeypatch.setattr(partition, "TEMPORAL_OUTPUT_PATH", temporal_out)
 
-    # 2. Test Temporal Shift với mảng 4D tx
-    temporal_path = "splits/temporal_shift_alt.json"
-    temporal_res = generate_temporal_shift_scenario(tx, num_clients=num_clients, output_path=temporal_path)
-    assert os.path.exists(temporal_path), "Không tạo được file temporal_shift_alt.json"
-    assert len(temporal_res["clients"]) == num_clients
-    c0_temp = temporal_res["clients"]["0"]
-    assert "sensor_ids" in c0_temp and "sensor_nodes" in c0_temp
-    assert len(c0_temp["sensor_nodes"]) == num_nodes
-    print("-> Cú pháp mảng tensor 4D tx cho Temporal Shift PASSED")
+    generate_partitions(num_clients=5, seed=42)
 
+    assert spatial_out.exists()
+    assert temporal_out.exists()
 
-if __name__ == "__main__":
-    print("=== Chạy kiểm thử cho Task 1.3: Non-IID Partition ===")
-    test_partition_nodes_spatial_clustering()
-    print("-> test_partition_nodes_spatial_clustering PASSED")
-
-    test_spatial_skew_scenario()
-    print("-> test_spatial_skew_scenario PASSED")
-
-    test_temporal_shift_scenario()
-    print("-> test_temporal_shift_scenario PASSED")
-
-    test_alternative_signatures()
-    print("-> test_alternative_signatures PASSED")
-
-    print("\n>>> TẤT CẢ UNIT TESTS CHO TASK 1.3 ĐÃ HOÀN THÀNH XUẤT SẮC! <<<")
+    with spatial_out.open("r", encoding="utf-8") as f:
+        assert len(json.load(f)["clients"]) == 5
+    with temporal_out.open("r", encoding="utf-8") as f:
+        assert len(json.load(f)["clients"]) == 5

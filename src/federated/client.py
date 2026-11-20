@@ -32,6 +32,27 @@ class ClientNode:
         """Cập nhật trọng số mô hình cục bộ từ trọng số toàn cục của Server."""
         self.model.load_state_dict(global_weights)
 
+    def get_parameters(self) -> Dict[str, torch.Tensor]:
+        """Lấy trọng số hiện tại của mô hình cục bộ."""
+        return copy.deepcopy(self.model.state_dict())
+
+    def train_epoch(self, global_parameters: Dict[str, torch.Tensor] = None) -> tuple[Dict[str, torch.Tensor], int]:
+        """Thực hiện huấn luyện trong một epoch trên dữ liệu của Client.
+
+        Args:
+            global_parameters: Trọng số toàn cục (dùng cho FedProx)
+
+        Returns:
+            Tuple gồm (trọng số mô hình sau khi train, tổng số mẫu huấn luyện n_k)
+        """
+        if global_parameters is not None:
+            self.set_weights(global_parameters)
+            # Khi có global_parameters, gọi train với mu > 0 nếu mu chưa được thiết lập
+            if self.mu == 0.0:
+                self.mu = 0.01  # Sử dụng giá trị mặc định cho FedProx
+        
+        return self.train()
+
     def train(self) -> tuple[Dict[str, torch.Tensor], int]:
         """Thực hiện huấn luyện cục bộ trên dữ liệu của Client.
 

@@ -58,20 +58,20 @@ pip install -r requirements.txt
 
 ### 3.1. Chạy trên Windows (PowerShell)
 
-#### Test 1: Kiểm thử Hạ tầng FL Cốt lõi (Task 1.1)
+#### Test 1: Kiểm thử Hạ tầng FL Cốt lõi 
 Kiểm tra khả năng tái lập (Seed), interface `BaseForecaster`, kích thước tensor 4D, huấn luyện `ClientNode` (cả FedAvg và FedProx) và tổng hợp `FederatedServer`:
 ```powershell
 $env:PYTHONPATH="."; $env:PYTHONIOENCODING="utf-8"; python tests/test_fl_core.py
 ```
 
-#### Test 2: Kiểm thử Pipeline Tiền xử lý Dữ liệu PeMS (Task 1.2)
+#### Test 2: Kiểm thử Pipeline Tiền xử lý Dữ liệu PeMS 
 Kiểm tra hàm tính ma trận kề ngưỡng Gaussian $A$, phân chia Train/Val/Test tuần tự, Z-score và tạo Sliding Window:
 ```powershell
 $env:PYTHONPATH="."; $env:PYTHONIOENCODING="utf-8"; python tests/test_data_pipeline.py
 ```
 *(Lưu ý: Yêu cầu hoàn thiện Task 1.2 trong `src/data/dataset.py`)*
 
-#### Test 3: Kiểm thử Kịch bản Phân chia Non-IID (Task 1.3)
+#### Test 3: Kiểm thử Kịch bản Phân chia Non-IID 
 * **Chạy kiểm thử tích hợp:**
   ```powershell
   $env:PYTHONPATH="."; $env:PYTHONIOENCODING="utf-8"; python tests/test_patrition.py
@@ -105,4 +105,21 @@ Hoặc chạy toàn bộ test thông qua `pytest`:
 ```bash
 PYTHONPATH=. pytest tests/
 ```
+
+## 4.Chạy luồng huấn luyện (GRU, LSTM, STGCN) -> 21 lệnh chạy
+python run.py --model GRU --mode centralized
+
+python run.py --model GRU --mode local --scenario spatial_skew
+
+python run.py --model GRU --mode local --scenario temporal_shift
+
+python run.py --model GRU --mode federated --algo FedAvg --scenario spatial_skew 
+
+python run.py --model GRU --mode federated --algo FedAvg --scenario temporal_shift
+
+python run.py --model GRU --mode federated --algo FedProx --scenario spatial_skew
+
+python run.py --model GRU --mode federated --algo FedProx --scenario temporal_shift
+
+**Lưu ý: Với model khác chỉ cần đổi tên model sau --model trong lệnh. VD: python run.py --model LSTM --mode federated --algo FedAvg --scenario temporal_shift**
 

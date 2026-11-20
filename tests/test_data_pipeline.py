@@ -1,45 +1,66 @@
 import os
-import sys
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
+import pickle
 import numpy as np
-from src.data.dataset import (
-    compute_adjacency_matrix,
-    load_and_preprocess_pems,
-    StandardTrafficDataset,
+import pytest
+import torch
+from torch.utils.data import DataLoader
+
+from src.data.dataset import load_metr_la, StandardTrafficDataset
+
+
+PROCESSED_DIR = os.path.join("data", "processed", "METR-LA")
+
+
+@pytest.mark.skipif(
+    not os.path.exists(os.path.join(PROCESSED_DIR, "train", "X_train.npy")),
+    reason="Dữ liệu METR-LA đã xử lý chưa tồn tại. Hãy chạy `python -m src.data.data_pipeline` trước."
 )
+def test_metr_la_processed_artifacts_integrity():
+    """Kiểm tra tính toàn vẹn của các tệp đầu ra sau TransformPipeline qua load_metr_la()."""
+    data = load_metr_la(PROCESSED_DIR)
+
+    X_train, Y_train = data["train_x"], data["train_y"]
+    X_val, Y_val = data["val_x"], data["val_y"]
+    X_test, Y_test = data["test_x"], data["test_y"]
+    adj = data["adjacency"]
+
+    # 1. Kiểm tra kích thước (Shape) chuẩn của METR-LA: (B, 12, 207, C)
+    assert X_train.ndim == 4 and X_train.shape[1:] == (12, 207, 2)
+    assert Y_train.ndim == 4 and Y_train.shape[1:] == (12, 207, 1)
+    assert X_train.shape[0] == Y_train.shape[0]
+
+    assert X_val.shape[1:] == (12, 207, 2)
+    assert Y_val.shape[1:] == (12, 207, 1)
+
+    assert X_test.shape[1:] == (12, 207, 2)
+    assert Y_test.shape[1:] == (12, 207, 1)
+
+    # 2. Kiểm tra ma trận kề A (207, 207)
+    assert adj.shape == (207, 207)
+    assert np.isfinite(adj).all()
+    assert adj.min() >= 0.0 and adj.max() <= 1.0
+
+    # 3. Kiểm tra Scaler đã lưu từ tập Train
+    scaler_path = os.path.join(PROCESSED_DIR, "scaler.pkl")
+    assert os.path.exists(scaler_path), "Thiếu tệp scaler.pkl"
+    with open(scaler_path, "rb") as f:
+        scaler = pickle.load(f)
+    assert scaler is not None
 
 
-def test_dataset_pipeline():
-    print("=== [Test Task 1.2] PeMS Data Pipeline & Adjacency Matrix ===")
+def test_standard_traffic_dataset_and_dataloader():
+    """Kiểm tra StandardTrafficDataset và DataLoader với dữ liệu chuẩn hóa METR-LA."""
+    B, T_in, T_out, N = 32, 12, 12, 207
+    X_mock = np.random.randn(B, T_in, N, 2).astype(np.float32)
+    Y_mock = np.random.randn(B, T_out, N, 1).astype(np.float32)
 
-    # 1. Kiểm tra Ma trận kề A
-    num_nodes = 20
-    adj = compute_adjacency_matrix("data/raw/distance.csv", num_nodes=num_nodes)
-    assert adj.shape == (num_nodes, num_nodes), "Kích thước ma trận kề sai lệch!"
-    assert np.allclose(adj, adj.T), "Ma trận kề không đối xứng!"
-    assert np.allclose(np.diag(adj), 1.0), "Đường chéo chính của A chưa bằng 1.0!"
-    print("-> Ma trận kề A (Shape, Đối xứng, Self-loop) [PASSED]")
+    dataset = StandardTrafficDataset(X_mock, Y_mock)
+    assert len(dataset) == B
 
-    # 2. Kiểm tra nạp và tiền xử lý PeMS
-    data_dict = load_and_preprocess_pems("data/raw/pems04.npz", time_in=12, time_out=12)
-    tx, ty = data_dict["train_x"], data_dict["train_y"]
-    vx, vy = data_dict["val_x"], data_dict["val_y"]
+    loader = DataLoader(dataset, batch_size=8, shuffle=False)
+    batch_x, batch_y = next(iter(loader))
 
-    # Kiểm tra sliding window
-    assert tx.shape[1] == 12, "Time_in phải đúng 12 bước!"
-    assert ty.shape[1] == 12, "Time_out phải đúng 12 bước!"
-    assert ty.shape[-1] == 1, "Tensor mục tiêu Y chỉ dự báo kênh 0 (Traffic Flow)!"
-    print(f"-> Tensor Train X: {tx.shape}, Train Y: {ty.shape} [PASSED]")
-
-    # 3. Kiểm tra PyTorch Dataset
-    dataset = StandardTrafficDataset(tx[:32], ty[:32])
-    sample_x, sample_y = dataset[0]
-    assert sample_x.shape == (12, tx.shape[2], tx.shape[3])
-    print("-> StandardTrafficDataset PyTorch wrapping [PASSED]")
-    print(">>> TASK 1.2 PASS HOÀN TOÀN <<<\n")
-
-
-if __name__ == "__main__":
-    test_dataset_pipeline()
+    assert isinstance(batch_x, torch.Tensor)
+    assert isinstance(batch_y, torch.Tensor)
+    assert batch_x.shape == (8, 12, 207, 2)
+    assert batch_y.shape == (8, 12, 207, 1)
