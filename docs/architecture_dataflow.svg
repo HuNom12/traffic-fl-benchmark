@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1013.4395000000001 1273.3000000000002" width="1013.4395000000001" height="1273.3000000000002" style="--bg:#18181B;--fg:#F4F4F5;--line:#71717A;--muted:#A1A1AA;--surface:#27272A;--border:#3F3F46;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+</defs>
+<g class="subgraph" data-id="Giai_doan_1" data-label="1. Data Ingestion &amp; Transformation">
+  <rect x="40" y="40" width="349.60199999999986" height="556.5" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="40" width="349.60199999999986" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="52" y="54" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">1. Data Ingestion &amp; Transformation</text>
+</g>
+<g class="subgraph" data-id="Giai_doan_2" data-label="2. Model Initialization">
+  <rect x="417.60199999999986" y="329.79999999999995" width="308.10599999999994" height="266.70000000000005" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="417.60199999999986" y="329.79999999999995" width="308.10599999999994" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="429.60199999999986" y="343.79999999999995" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">2. Model Initialization</text>
+</g>
+<g class="subgraph" data-id="Giai_doan_3" data-label="3. Federated Training Loop">
+  <rect x="45.16233333333332" y="656.5" width="826.8246666666668" height="250.1" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="45.16233333333332" y="656.5" width="826.8246666666668" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="57.16233333333332" y="670.5" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">3. Federated Training Loop</text>
+</g>
+<g class="subgraph" data-id="Giai_doan_4" data-label="4. Evaluation &amp; Metrics">
+  <rect x="710.5345000000001" y="966.6" width="262.905" height="266.70000000000005" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="710.5345000000001" y="966.6" width="262.905" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="722.5345000000001" y="980.6" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">4. Evaluation &amp; Metrics</text>
+</g>
+<polyline class="edge" data-from="Server" data-to="Eval" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="724.0319999999999,737.4 724.0319999999999,749.4 841.9870000000001,749.4 841.9870000000001,1010.6" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Splits" data-to="Client1" data-style="dotted" data-arrow-start="false" data-arrow-end="true" points="214.80099999999993,580.4999999999999 214.80099999999993,648.5 285.49266666666665,648.5 285.49266666666665,853.7" fill="none" stroke="var(--_line)" stroke-width="1" stroke-dasharray="4 4" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Splits" data-to="ClientK" data-style="dotted" data-arrow-start="false" data-arrow-end="true" points="214.80099999999993,580.4999999999999 214.80099999999993,648.5 695.8466333333333,648.5 695.8466333333333,853.7" fill="none" stroke="var(--_line)" stroke-width="1" stroke-dasharray="4 4" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Model" data-to="Server" data-style="dotted" data-arrow-start="false" data-arrow-end="true" points="571.6549999999999,580.4999999999999 571.6549999999999,640.5 646.5696666666666,640.5 646.5696666666666,700.5" fill="none" stroke="var(--_line)" stroke-width="1" stroke-dasharray="4 4" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Model" data-to="Client1" data-style="dotted" data-arrow-start="false" data-arrow-end="true" points="571.6549999999999,580.4999999999999 571.6549999999999,640.5 323.0561333333333,640.5 323.0561333333333,853.7" fill="none" stroke="var(--_line)" stroke-width="1" stroke-dasharray="4 4" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Model" data-to="ClientK" data-style="dotted" data-arrow-start="false" data-arrow-end="true" points="571.6549999999999,580.4999999999999 571.6549999999999,640.5 732.0319999999999,640.5 732.0319999999999,853.7" fill="none" stroke="var(--_line)" stroke-width="1" stroke-dasharray="4 4" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="HF" data-to="Raw" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="BronzePipeline" points="214.80099999999993,120.9 214.80099999999993,237.2" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Raw" data-to="Trans" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="TransformPipeline" points="214.80099999999993,274.1 214.80099999999993,382.09999999999997" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Trans" data-to="Splits" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="PartitionPipeline" points="214.80099999999993,418.99999999999994 214.80099999999993,543.5999999999999" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Config" data-to="Factory" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="571.6549999999999,418.99999999999994 571.6549999999999,458.69999999999993" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Factory" data-to="Model" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="571.6549999999999,495.59999999999997 571.6549999999999,543.5999999999999" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Server" data-to="Client1" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Broadcast Weights" points="569.1073333333334,737.4 569.1073333333334,749.4 411.2374166666666,749.4 411.2374166666666,817.7 315.0561333333333,817.7 315.0561333333333,853.7" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Server" data-to="ClientK" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Broadcast Weights" points="646.5696666666666,737.4 646.5696666666666,749.4 661.295,749.4 661.295,817.7 687.8466333333333,817.7 687.8466333333333,853.7" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Client1" data-to="Client1" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Train Local (Loss + Proximal Term)" points="248.5383333333333,866 238.5383333333333,866 238.5383333333333,878.3 248.5383333333333,878.3" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="ClientK" data-to="ClientK" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Train Local (Loss + Proximal Term)" points="641.1302333333334,866 631.1302333333334,866 631.1302333333334,878.3 641.1302333333334,878.3" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Client1" data-to="Server" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Upload Weights &amp; n_k" points="337.2287333333333,853.7 337.2287333333333,841.7 527.4874166666666,841.7 527.4874166666666,761.4 607.8385000000001,761.4 607.8385000000001,737.4" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="ClientK" data-to="Server" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Upload Weights &amp; n_k" points="711.2048333333333,853.7 711.2048333333333,817.7 777.545,817.7 777.545,761.4 685.3008333333333,761.4 685.3008333333333,737.4" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Server" data-to="Server" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="FedAvg Weighted Aggregation" points="530.3761666666667,712.8 520.3761666666667,712.8 520.3761666666667,725.1 530.3761666666667,725.1" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Eval" data-to="Denorm" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="841.9870000000001,1047.5 841.9870000000001,1095.5" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Denorm" data-to="Metrics" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="841.9870000000001,1132.4 841.9870000000001,1180.4" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<g class="edge-label" data-from="HF" data-to="Raw" data-label="BronzePipeline">
+  <rect x="168.80099999999993" y="163.9" width="91.30600000000003" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="214.45399999999995" y="179.05" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">BronzePipeline</text>
+</g>
+<g class="edge-label" data-from="Raw" data-to="Trans" data-label="TransformPipeline">
+  <rect x="161.80099999999993" y="317.1" width="105.56200000000001" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="214.58199999999994" y="332.25" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">TransformPipeline</text>
+</g>
+<g class="edge-label" data-from="Trans" data-to="Splits" data-label="PartitionPipeline">
+  <rect x="167.30099999999993" y="470.29999999999995" width="94.87000000000003" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="214.73599999999993" y="485.44999999999993" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">PartitionPipeline</text>
+</g>
+<g class="edge-label" data-from="Server" data-to="Client1" data-label="Broadcast Weights">
+  <rect x="357.7374166666666" y="780.4" width="106.75000000000003" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="411.1124166666666" y="795.55" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Broadcast Weights</text>
+</g>
+<g class="edge-label" data-from="Server" data-to="ClientK" data-label="Broadcast Weights">
+  <rect x="607.795" y="780.4" width="106.75000000000003" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="661.17" y="795.55" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Broadcast Weights</text>
+</g>
+<g class="edge-label" data-from="Client1" data-to="Client1" data-label="Train Local (Loss + Proximal Term)">
+  <rect x="57.16233333333331" y="857" width="183.376" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="148.8503333333333" y="872.15" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Train Local (Loss + Proximal Term)</text>
+</g>
+<g class="edge-label" data-from="ClientK" data-to="ClientK" data-label="Train Local (Loss + Proximal Term)">
+  <rect x="449.75423333333333" y="857" width="183.376" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="541.4422333333333" y="872.15" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Train Local (Loss + Proximal Term)</text>
+</g>
+<g class="edge-label" data-from="Client1" data-to="Server" data-label="Upload Weights &amp; n_k">
+  <rect x="468.4874166666666" y="780.4" width="117.44200000000002" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="527.2084166666666" y="795.55" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Upload Weights &amp; n_k</text>
+</g>
+<g class="edge-label" data-from="ClientK" data-to="Server" data-label="Upload Weights &amp; n_k">
+  <rect x="718.545" y="780.4" width="117.44200000000002" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="777.266" y="795.55" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Upload Weights &amp; n_k</text>
+</g>
+<g class="edge-label" data-from="Server" data-to="Server" data-label="FedAvg Weighted Aggregation">
+  <rect x="361.5721666666667" y="703.8000000000001" width="160.804" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="441.9741666666667" y="718.95" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">FedAvg Weighted Aggregation</text>
+</g>
+<g class="node" data-id="HF" data-label="HuggingFace (witgaw/METR-LA)" data-shape="rectangle">
+  <rect x="98.23699999999995" y="84" width="233.12799999999996" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="214.80099999999993" y="102.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">HuggingFace (witgaw/METR-LA)</text>
+</g>
+<g class="node" data-id="Raw" data-label="data/raw/METR-LA/*.parquet + sensor_graph" data-shape="rectangle">
+  <rect x="57.852499999999964" y="237.2" width="313.89699999999993" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="214.80099999999993" y="255.64999999999998" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">data/raw/METR-LA/*.parquet + sensor_graph</text>
+</g>
+<g class="node" data-id="Trans" data-label="data/processed/METR-LA/ (X_train, Y_train, A)" data-shape="rectangle">
+  <rect x="56" y="382.09999999999997" width="317.60199999999986" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="214.80099999999993" y="400.54999999999995" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">data/processed/METR-LA/ (X_train, Y_train, A)</text>
+</g>
+<g class="node" data-id="Splits" data-label="splits/ (spatial_skew.json, temporal_shift.json)" data-shape="rectangle">
+  <rect x="61.557499999999976" y="543.5999999999999" width="306.4869999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="214.80099999999993" y="562.05" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">splits/ (spatial_skew.json, temporal_shift.json)</text>
+</g>
+<g class="node" data-id="Config" data-label="configs/config.yaml" data-shape="rectangle">
+  <rect x="494.7344999999998" y="382.09999999999997" width="153.841" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="571.6549999999997" y="400.54999999999995" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">configs/config.yaml</text>
+</g>
+<g class="node" data-id="Factory" data-label="build_model(config)" data-shape="rectangle">
+  <rect x="494.3639999999998" y="458.69999999999993" width="154.582" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="571.6549999999997" y="477.1499999999999" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">build_model(config)</text>
+</g>
+<g class="node" data-id="Model" data-label="STGCN / GRU / LSTM (BaseForecaster)" data-shape="rectangle">
+  <rect x="433.60199999999986" y="543.5999999999999" width="276.10599999999994" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="571.6549999999999" y="562.05" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">STGCN / GRU / LSTM (BaseForecaster)</text>
+</g>
+<g class="node" data-id="Server" data-label="FederatedServer (Global Model)" data-shape="rectangle">
+  <rect x="530.3761666666667" y="700.5" width="232.38699999999994" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="646.5696666666666" y="718.95" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">FederatedServer (Global Model)</text>
+</g>
+<g class="node" data-id="Client1" data-label="ClientNode 1" data-shape="rectangle">
+  <rect x="248.5383333333333" y="853.7" width="110.86300000000001" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="303.9698333333333" y="872.1500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">ClientNode 1</text>
+</g>
+<g class="node" data-id="ClientK" data-label="ClientNode K" data-shape="rectangle">
+  <rect x="641.1302333333334" y="853.7" width="116.791" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="699.5257333333334" y="872.1500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">ClientNode K</text>
+</g>
+<g class="node" data-id="Eval" data-label="Inference on Test Set" data-shape="rectangle">
+  <rect x="759.1385000000001" y="1010.6" width="165.69699999999995" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="841.9870000000001" y="1029.05" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Inference on Test Set</text>
+</g>
+<g class="node" data-id="Denorm" data-label="Denormalize (mph) via scaler.pkl" data-shape="rectangle">
+  <rect x="726.5345000000001" y="1095.5" width="230.90499999999994" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="841.9870000000001" y="1113.95" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Denormalize (mph) via scaler.pkl</text>
+</g>
+<g class="node" data-id="Metrics" data-label="Masked MAE / RMSE / MAPE" data-shape="rectangle">
+  <rect x="735.4265" y="1180.4" width="213.12099999999995" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="841.987" y="1198.8500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Masked MAE / RMSE / MAPE</text>
+</g>
+</svg>
